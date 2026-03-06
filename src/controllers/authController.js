@@ -11,32 +11,37 @@ const generateToken = (userId) => {
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
-exports.register = async (req, res, next) => {
+const registerUser = async (req, res, next) => {
   try {
-    const { username, email, password } = req.body;
+    const { name, email, password } = req.body;
 
-    // Check if user already exists
-    const userExists = await User.findOne({ $or: [{ email }, { username }] });
-    if (userExists) {
-      const error = new Error('User already exists with this email or username');
+    // Validate required fields
+    if (!name || !email || !password) {
+      const error = new Error('Please provide name, email, and password');
       error.status = 400;
       throw error;
     }
 
-    // Create new user
-    const user = await User.create({
-      username,
-      email,
-      password
-    });
+    // Check if email already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      const error = new Error('User already exists with this email');
+      error.status = 400;
+      throw error;
+    }
 
+    // Create new user (password is hashed via pre-save hook)
+    const user = await User.create({ name, email, password });
+
+    // Return user data and token
     res.status(201).json({
       success: true,
       data: {
         _id: user._id,
-        username: user.username,
+        name: user.name,
         email: user.email,
-        avatar: user.avatar,
+        profilePic: user.profilePic,
+        status: user.status,
         token: generateToken(user._id)
       }
     });
@@ -48,9 +53,16 @@ exports.register = async (req, res, next) => {
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-exports.login = async (req, res, next) => {
+const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      const error = new Error('Please provide email and password');
+      error.status = 400;
+      throw error;
+    }
 
     // Check if user exists and get password
     const user = await User.findOne({ email }).select('+password');
@@ -60,7 +72,7 @@ exports.login = async (req, res, next) => {
       throw error;
     }
 
-    // Check password
+    // Verify password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       const error = new Error('Invalid credentials');
@@ -68,7 +80,7 @@ exports.login = async (req, res, next) => {
       throw error;
     }
 
-    // Update user status
+    // Update user status to online
     user.status = 'online';
     await user.save();
 
@@ -76,9 +88,9 @@ exports.login = async (req, res, next) => {
       success: true,
       data: {
         _id: user._id,
-        username: user.username,
+        name: user.name,
         email: user.email,
-        avatar: user.avatar,
+        profilePic: user.profilePic,
         status: user.status,
         token: generateToken(user._id)
       }
@@ -88,68 +100,4 @@ exports.login = async (req, res, next) => {
   }
 };
 
-// @desc    Get current user
-// @route   GET /api/auth/me
-// @access  Private
-exports.getMe = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.userId);
-    if (!user) {
-      const error = new Error('User not found');
-      error.status = 404;
-      throw error;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status,
-        lastSeen: user.lastSeen
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Update user profile
-// @route   PUT /api/auth/profile
-// @access  Private
-exports.updateProfile = async (req, res, next) => {
-  try {
-    const { username, avatar } = req.body;
-    const updateData = {};
-
-    if (username) updateData.username = username;
-    if (avatar) updateData.avatar = avatar;
-
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      updateData,
-      { new: true, runValidators: true }
-    );
-
-    if (!user) {
-      const error = new Error('User not found');
-      error.status = 404;
-      throw error;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+module.exports = { registerUser, loginUser };
