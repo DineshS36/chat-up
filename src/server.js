@@ -2,7 +2,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');
 const connectDB = require('./config/db');
-const socketHandler = require('./sockets/socketHandler');
+const chatSocket = require('./sockets/chatSocket');
 
 // Load environment variables
 require('dotenv').config();
@@ -24,7 +24,7 @@ const io = new Server(server, {
 });
 
 // Handle socket connections
-socketHandler(io);
+chatSocket(io);
 
 // Start server
 server.listen(PORT, () => {
