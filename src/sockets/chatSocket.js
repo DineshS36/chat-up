@@ -44,8 +44,18 @@ const chatSocket = (io) => {
                     status: 'sent',
                 });
 
-                // Update chat's lastMessage
-                await Chat.findByIdAndUpdate(chatId, { lastMessage: message._id });
+                // Update chat's lastMessage and increment unread counts
+                const chat = await Chat.findById(chatId);
+                chat.lastMessage = message._id;
+
+                chat.participants.forEach((participantId) => {
+                    if (participantId.toString() !== senderId) {
+                        const current = chat.unreadCounts.get(participantId.toString()) || 0;
+                        chat.unreadCounts.set(participantId.toString(), current + 1);
+                    }
+                });
+
+                await chat.save();
 
                 console.log(`Message saved: ${message._id} (${senderId} → ${receiverId}) in chat ${chatId}`);
 

@@ -273,3 +273,41 @@ exports.removeFromGroup = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Mark chat as read (reset unread count)
+// @route   PUT /api/chats/:chatId/read
+// @access  Private
+exports.markChatAsRead = async (req, res, next) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      const error = new Error('Chat not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const isParticipant = chat.participants.some(
+      (p) => p.toString() === req.userId
+    );
+
+    if (!isParticipant) {
+      const error = new Error('Not authorized');
+      error.status = 403;
+      throw error;
+    }
+
+    // Reset unread count for current user
+    chat.unreadCounts.set(req.userId, 0);
+    await chat.save();
+
+    res.json({
+      success: true,
+      message: 'Chat marked as read'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
