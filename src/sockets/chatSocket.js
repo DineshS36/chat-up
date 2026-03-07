@@ -17,6 +17,14 @@ const chatSocket = (io) => {
             console.log(`Online users: ${onlineUsers.size}`);
         });
 
+        // ─── join_chat ───────────────────────────────────────────
+        // Client sends: socket.emit('join_chat', chatId)
+        // Joins the socket to a chat room for typing indicators
+        socket.on('join_chat', (chatId) => {
+            socket.join(chatId);
+            console.log(`Socket ${socket.id} joined chat room: ${chatId}`);
+        });
+
         // ─── send_message ────────────────────────────────────────
         // Client sends: socket.emit('send_message', { chatId, senderId, receiverId, content })
         // 1. Persists the message in MongoDB (with chatId)
@@ -56,6 +64,9 @@ const chatSocket = (io) => {
                 });
 
                 await chat.save();
+
+                // Auto stop typing when message is sent
+                socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
 
                 console.log(`Message saved: ${message._id} (${senderId} → ${receiverId}) in chat ${chatId}`);
 
@@ -136,6 +147,20 @@ const chatSocket = (io) => {
                 console.error('Error marking messages as read:', error.message);
                 socket.emit('error', { message: error.message });
             }
+        });
+
+        // ─── typing ──────────────────────────────────────────────
+        // Client sends: socket.emit('typing', { chatId, senderId })
+        // Broadcasts to all other users in the chat room
+        socket.on('typing', ({ chatId, senderId }) => {
+            socket.to(chatId).emit('user_typing', { chatId, senderId });
+        });
+
+        // ─── stop_typing ─────────────────────────────────────────
+        // Client sends: socket.emit('stop_typing', { chatId, senderId })
+        // Broadcasts to all other users in the chat room
+        socket.on('stop_typing', ({ chatId, senderId }) => {
+            socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
         });
 
         // ─── disconnect ──────────────────────────────────────────
