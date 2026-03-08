@@ -14,6 +14,7 @@ function Chat() {
     const [messageText, setMessageText] = useState("");
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
+    const [onlineStatuses, setOnlineStatuses] = useState({});
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const navigate = useNavigate();
@@ -33,6 +34,7 @@ function Chat() {
         // Register with socket
         if (user._id) {
             socket.emit("join", user._id);
+            socket.emit("user_online", user._id);
         }
 
         return () => {
@@ -41,6 +43,7 @@ function Chat() {
             socket.off("messages_read");
             socket.off("user_typing");
             socket.off("user_stop_typing");
+            socket.off("user_status_update");
         };
     }, []);
 
@@ -94,11 +97,19 @@ function Chat() {
             }
         };
 
+        const handleUserStatusUpdate = ({ userId, status, lastSeen }) => {
+            setOnlineStatuses((prev) => ({
+                ...prev,
+                [userId]: { status, lastSeen },
+            }));
+        };
+
         socket.on("receive_message", handleReceive);
         socket.on("message_delivered", handleDelivered);
         socket.on("messages_read", handleRead);
         socket.on("user_typing", handleUserTyping);
         socket.on("user_stop_typing", handleUserStopTyping);
+        socket.on("user_status_update", handleUserStatusUpdate);
 
         return () => {
             socket.off("receive_message", handleReceive);
@@ -106,6 +117,7 @@ function Chat() {
             socket.off("messages_read", handleRead);
             socket.off("user_typing", handleUserTyping);
             socket.off("user_stop_typing", handleUserStopTyping);
+            socket.off("user_status_update", handleUserStatusUpdate);
         };
     }, [selectedChatId]);
 
@@ -257,6 +269,55 @@ function Chat() {
         return name.charAt(0).toUpperCase();
     };
 
+    const formatLastSeen = (dateStr) => {
+        if (!dateStr) return "";
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now - date;
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return `${mins}m ago`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 7) return `${days}d ago`;
+
+        return date.toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+        });
+    };
+
+    const getOtherUserPresence = (chat) => {
+        if (!chat || chat.isGroupChat) return null;
+        const other = chat.participants?.find((p) => p._id !== user._id);
+        if (!other) return null;
+
+        const presence = onlineStatuses[other._id] || {
+            status: other.status,
+            lastSeen: other.lastSeen,
+        };
+
+        if (presence.status === "online") {
+            return (
+                <span style={{ color: "#4ade80", fontSize: "12px", display: "block", marginTop: "2px" }}>
+                    Online
+                </span>
+            );
+        } else if (presence.lastSeen) {
+            return (
+                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "12px", display: "block", marginTop: "2px" }}>
+                    Last seen: {formatLastSeen(presence.lastSeen)}
+                </span>
+            );
+        }
+        return (
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "12px", display: "block", marginTop: "2px" }}>
+                Offline
+            </span>
+        );
+    };
+
     const formatTime = (dateStr) => {
         if (!dateStr) return "";
         const date = new Date(dateStr);
@@ -402,6 +463,7 @@ function Chat() {
                                     <h3 style={styles.chatHeaderName}>
                                         {getChatName(selectedChat)}
                                     </h3>
+                                    {!isTyping && getOtherUserPresence(selectedChat)}
                                     {isTyping && (
                                         <span style={styles.typingIndicator}>
                                             typing

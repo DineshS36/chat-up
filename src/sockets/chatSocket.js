@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const Chat = require('../models/Chat');
+const User = require('../models/User');
 
 // In-memory map of userId → socketId
 const onlineUsers = new Map();
@@ -11,10 +12,18 @@ const chatSocket = (io) => {
         // ─── join ────────────────────────────────────────────────
         // Client sends: socket.emit('join', userId)
         // Stores the userId ↔ socketId mapping
-        socket.on('join', (userId) => {
+        socket.on('join', async (userId) => {
             onlineUsers.set(userId, socket.id);
             console.log(`User joined: ${userId} → ${socket.id}`);
             console.log(`Online users: ${onlineUsers.size}`);
+
+            // Update status in DB and broadcast
+            try {
+                await User.findByIdAndUpdate(userId, { status: 'online' });
+                io.emit('user_status_update', { userId, status: 'online' });
+            } catch (err) {
+                console.error('Error updating user online status:', err.message);
+            }
         });
 
         // ─── join_chat ───────────────────────────────────────────
@@ -166,12 +175,28 @@ const chatSocket = (io) => {
         // ─── disconnect ──────────────────────────────────────────
         // Automatically fired when a client disconnects
         // Removes the userId from the online map
-        socket.on('disconnect', () => {
+        socket.on('disconnect', async () => {
             // Find and remove the user by their socketId
             for (const [userId, socketId] of onlineUsers.entries()) {
                 if (socketId === socket.id) {
                     onlineUsers.delete(userId);
                     console.log(`User disconnected: ${userId} (${socket.id})`);
+
+                    // Update status in DB and broadcast
+                    try {
+                        const lastSeen = new Date();
+                        await User.findByIdAndUpdate(userId, {
+                            status: 'offline',
+                            lastSeen,
+                        });
+                        io.emit('user_status_update', {
+                            userId,
+                            status: 'offline',
+                            lastSeen,
+                        });
+                    } catch (err) {
+                        console.error('Error updating user offline status:', err.message);
+                    }
                     break;
                 }
             }
