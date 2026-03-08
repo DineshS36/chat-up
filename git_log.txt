@@ -1,0 +1,20 @@
+42d1586 Edit and delete function implemented
+02a53cc Delete and edit function implemented
+307d05d Online status fix
+9127580 Last seen implemented
+317de7c typing indicator implemented
+4cead21 Notification badge disappear
+bfebf58 Tick status implemented
+4834591 message box and chat conversation implemented
+f5dfe4a register ui implemented
+edb4ab9 new chat and user list implemented
+d92ee12 login bug fixed
+2d6992a chats load implemented
+1ab533c now the login.jsx frontend and the error is fixed
+f748d14 Login,chat,register jsx files are created
+c6a1fbe add a basic routing in the app.jsx and edited
+9e43e2d socket.js created and connected
+51c2727 api.js created and connected
+ec2b4c1 Delete and edit happens might cause problems
+39d5b74 Axois for api installed
+aae952d Frontend initilize
