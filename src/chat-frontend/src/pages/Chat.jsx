@@ -13,6 +13,7 @@ function Chat() {
     const [messages, setMessages] = useState([]);
     const [messageText, setMessageText] = useState("");
     const [editingMessageId, setEditingMessageId] = useState(null);
+    const [messageToDelete, setMessageToDelete] = useState(null);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
@@ -311,14 +312,19 @@ function Chat() {
         setMessageText("");
     };
 
-    const handleDeleteClick = async (msgId) => {
-        if (!window.confirm("Delete this message?")) return;
+    const handleDeleteClick = (msgId) => {
+        setMessageToDelete(msgId);
+    };
+
+    const confirmDelete = async () => {
+        if (!messageToDelete) return;
+
         try {
-            await API.delete(`/messages/${msgId}`);
+            await API.delete(`/messages/${messageToDelete}`);
             // Optimistically update
             setMessages((prev) =>
                 prev.map((m) =>
-                    m._id === msgId
+                    m._id === messageToDelete
                         ? { ...m, deleted: true, content: "This message was deleted" }
                         : m
                 )
@@ -326,7 +332,13 @@ function Chat() {
             fetchChats();
         } catch (error) {
             console.error("Failed to delete message", error);
+        } finally {
+            setMessageToDelete(null);
         }
+    };
+
+    const cancelDelete = () => {
+        setMessageToDelete(null);
     };
 
     const handleKeyDown = (e) => {
@@ -680,6 +692,30 @@ function Chat() {
                         onChatCreated={handleChatCreated}
                     />
                 )}
+
+                {/* Delete Confirmation Modal */}
+                {messageToDelete && (
+                    <div style={styles.modalOverlay}>
+                        <div style={styles.modalContent}>
+                            <h3 style={{ margin: "0 0 16px" }}>Delete Message</h3>
+                            <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
+                                Are you sure you want to delete this message? This action cannot be undone.
+                            </p>
+                            <div style={styles.modalActions}>
+                                <button onClick={cancelDelete} style={styles.modalBtn}>
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    style={{ ...styles.modalBtn, ...styles.modalBtnDanger }}
+                                    id="confirm-delete-btn"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </>
     );
@@ -974,12 +1010,14 @@ const styles = {
         border: "none",
         color: "rgba(255,255,255,0.7)",
         cursor: "pointer",
-        fontSize: "10px",
+        fontSize: "12px", // Slightly larger for better icon visibility
         padding: "4px",
         borderRadius: "4px",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        WebkitTextStroke: "1px rgba(0,0,0,0.8)", // Black outline
+        textShadow: "0 1px 2px rgba(0,0,0,0.5)", // Fallback shadow
     },
     deletedBubble: {
         background: "rgba(255,255,255,0.04)",
@@ -999,6 +1037,47 @@ const styles = {
         color: "rgba(255,255,255,0.5)",
         cursor: "pointer",
         padding: "2px",
+    },
+
+    /* Modals */
+    modalOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+    },
+    modalContent: {
+        backgroundColor: "#1a1640",
+        padding: "24px",
+        borderRadius: "16px",
+        width: "90%",
+        maxWidth: "400px",
+        border: "1px solid rgba(255,255,255,0.1)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+    },
+    modalActions: {
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "12px",
+    },
+    modalBtn: {
+        background: "rgba(255,255,255,0.1)",
+        border: "none",
+        color: "#fff",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        fontSize: "14px",
+        transition: "background 0.2s",
+    },
+    modalBtnDanger: {
+        background: "#e3342f",
     },
 
     /* Input bar */
