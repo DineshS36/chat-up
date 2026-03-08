@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
+import UserList from "../components/UserList";
 
 function Chat() {
     const [chats, setChats] = useState([]);
     const [selectedChatId, setSelectedChatId] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [showUserList, setShowUserList] = useState(false);
     const [error, setError] = useState("");
     const navigate = useNavigate();
 
@@ -44,7 +46,7 @@ function Chat() {
     const getChatName = (chat) => {
         if (chat.isGroupChat) return chat.name;
         const other = chat.participants?.find((p) => p._id !== user._id);
-        return other?.username || "Unknown User";
+        return other?.name || "Unknown User";
     };
 
     // Get avatar initial
@@ -75,6 +77,12 @@ function Chat() {
         navigate("/");
     };
 
+    const handleChatCreated = (chat) => {
+        setShowUserList(false);
+        setSelectedChatId(chat._id);
+        fetchChats();
+    };
+
     const selectedChat = chats.find((c) => c._id === selectedChatId);
 
     return (
@@ -83,9 +91,18 @@ function Chat() {
             <div style={styles.sidebar}>
                 <div style={styles.sidebarHeader}>
                     <h2 style={styles.sidebarTitle}>💬 Chats</h2>
-                    <button onClick={handleLogout} style={styles.logoutBtn} title="Logout">
-                        ↪
-                    </button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                            onClick={() => setShowUserList(true)}
+                            style={styles.newChatBtn}
+                            title="New Chat"
+                        >
+                            +
+                        </button>
+                        <button onClick={handleLogout} style={styles.logoutBtn} title="Logout">
+                            ↪
+                        </button>
+                    </div>
                 </div>
 
                 <div style={styles.chatList}>
@@ -163,6 +180,14 @@ function Chat() {
                     )}
                 </div>
             </div>
+
+            {/* UserList Modal */}
+            {showUserList && (
+                <UserList
+                    onClose={() => setShowUserList(false)}
+                    onChatCreated={handleChatCreated}
+                />
+            )}
         </div>
     );
 }
@@ -197,6 +222,21 @@ const styles = {
         margin: 0,
         fontSize: "20px",
         fontWeight: 700,
+    },
+    newChatBtn: {
+        background: "linear-gradient(135deg, #667eea, #764ba2)",
+        border: "none",
+        color: "#fff",
+        fontSize: "20px",
+        fontWeight: 700,
+        width: "36px",
+        height: "36px",
+        borderRadius: "10px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "opacity 0.15s",
     },
     logoutBtn: {
         background: "rgba(255,255,255,0.08)",

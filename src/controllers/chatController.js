@@ -8,8 +8,8 @@ const Message = require('../models/Message');
 exports.getChats = async (req, res, next) => {
   try {
     const chats = await Chat.find({ participants: req.userId })
-      .populate('participants', 'username email avatar status lastSeen')
-      .populate('admin', 'username email avatar')
+      .populate('participants', 'name email profilePic status lastSeen')
+      .populate('admin', 'name email profilePic')
       .populate('lastMessage')
       .sort({ updatedAt: -1 });
 
@@ -29,8 +29,8 @@ exports.getChats = async (req, res, next) => {
 exports.getChat = async (req, res, next) => {
   try {
     const chat = await Chat.findById(req.params.id)
-      .populate('participants', 'username email avatar status lastSeen')
-      .populate('admin', 'username email avatar')
+      .populate('participants', 'name email profilePic status lastSeen')
+      .populate('admin', 'name email profilePic')
       .populate('lastMessage');
 
     if (!chat) {
@@ -63,7 +63,7 @@ exports.getChatsByUserId = async (req, res, next) => {
     const { userId } = req.params;
 
     const chats = await Chat.find({ participants: userId })
-      .populate('participants', 'username email avatar status lastSeen')
+      .populate('participants', 'name email profilePic status lastSeen')
       .populate('lastMessage')
       .sort({ updatedAt: -1 });
 
@@ -95,7 +95,7 @@ exports.createChat = async (req, res, next) => {
     const existingChat = await Chat.findOne({
       isGroupChat: false,
       participants: { $all: [currentUserId, otherUserId], $size: 2 }
-    }).populate('participants', 'username email avatar status lastSeen');
+    }).populate('participants', 'name email profilePic status lastSeen');
 
     if (existingChat) {
       return res.json({
@@ -120,7 +120,7 @@ exports.createChat = async (req, res, next) => {
     });
 
     const populatedChat = await Chat.findById(chat._id)
-      .populate('participants', 'username email avatar status lastSeen');
+      .populate('participants', 'name email profilePic status lastSeen');
 
     res.status(201).json({
       success: true,
@@ -164,8 +164,8 @@ exports.createGroupChat = async (req, res, next) => {
     });
 
     const populatedChat = await Chat.findById(chat._id)
-      .populate('participants', 'username email avatar status lastSeen')
-      .populate('admin', 'username email avatar');
+      .populate('participants', 'name email profilePic status lastSeen')
+      .populate('admin', 'name email profilePic');
 
     res.status(201).json({
       success: true,
@@ -217,8 +217,8 @@ exports.addToGroup = async (req, res, next) => {
     await chat.save();
 
     const populatedChat = await Chat.findById(chat._id)
-      .populate('participants', 'username email avatar status lastSeen')
-      .populate('admin', 'username email avatar');
+      .populate('participants', 'name email profilePic status lastSeen')
+      .populate('admin', 'name email profilePic');
 
     res.json({
       success: true,
@@ -262,8 +262,8 @@ exports.removeFromGroup = async (req, res, next) => {
     await chat.save();
 
     const populatedChat = await Chat.findById(chat._id)
-      .populate('participants', 'username email avatar status lastSeen')
-      .populate('admin', 'username email avatar');
+      .populate('participants', 'name email profilePic status lastSeen')
+      .populate('admin', 'name email profilePic');
 
     res.json({
       success: true,
