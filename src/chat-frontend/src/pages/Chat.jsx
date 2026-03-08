@@ -12,6 +12,8 @@ function Chat() {
     const [error, setError] = useState("");
     const [messages, setMessages] = useState([]);
     const [messageText, setMessageText] = useState("");
+    const [editingMessageId, setEditingMessageId] = useState(null);
+    const [messageToDelete, setMessageToDelete] = useState(null);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
@@ -104,12 +106,31 @@ function Chat() {
             }));
         };
 
+        const handleMessageUpdated = (updatedMsg) => {
+            setMessages((prev) =>
+                prev.map((m) => (m._id === updatedMsg._id ? updatedMsg : m))
+            );
+        };
+
+        const handleMessageDeleted = (deletedMsgId) => {
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m._id === deletedMsgId
+                        ? { ...m, deleted: true, content: "This message was deleted" }
+                        : m
+                )
+            );
+            fetchChats();
+        };
+
         socket.on("receive_message", handleReceive);
         socket.on("message_delivered", handleDelivered);
         socket.on("messages_read", handleRead);
         socket.on("user_typing", handleUserTyping);
         socket.on("user_stop_typing", handleUserStopTyping);
         socket.on("user_status_update", handleUserStatusUpdate);
+        socket.on("message_updated", handleMessageUpdated);
+        socket.on("message_deleted", handleMessageDeleted);
 
         return () => {
             socket.off("receive_message", handleReceive);
@@ -118,6 +139,8 @@ function Chat() {
             socket.off("user_typing", handleUserTyping);
             socket.off("user_stop_typing", handleUserStopTyping);
             socket.off("user_status_update", handleUserStatusUpdate);
+            socket.off("message_updated", handleMessageUpdated);
+            socket.off("message_deleted", handleMessageDeleted);
         };
     }, [selectedChatId]);
 
@@ -208,8 +231,8 @@ function Chat() {
         }
     };
 
-    // ─── Send message via socket ───
-    const handleSendMessage = () => {
+    // ─── Send message via socket or API for edits ───
+    const handleSendMessage = async () => {
         if (!messageText.trim() || !selectedChatId) return;
 
         // Stop typing indicator on send
@@ -224,30 +247,98 @@ function Chat() {
             (p) => p._id !== user._id
         );
 
-        if (!otherUser) return;
+        if (!otherUser && !selectedChat?.isGroupChat) return;
 
-        const msgPayload = {
-            chatId: selectedChatId,
-            senderId: user._id,
-            receiverId: otherUser._id,
-            content: messageText.trim(),
-        };
+        try {
+            if (editingMessageId) {
+                // Determine if we are updating an optimistically created message (which has a generic timestamp ID)
+                // If it's real, send the PUT request
+                if (!editingMessageId.startsWith("17")) {
+                    await API.put(`/messages/${editingMessageId}`, {
+                        content: messageText.trim(),
+                    });
+                } else {
+                    // Update purely locally if it hasn't hit DB yet (edge case)
+                    setMessages((prev) =>
+                        prev.map((m) =>
+                            m._id === editingMessageId
+                                ? { ...m, content: messageText.trim(), edited: true }
+                                : m
+                        )
+                    );
+                }
 
-        socket.emit("send_message", msgPayload);
+                setEditingMessageId(null);
+                setMessageText("");
+                fetchChats();
+                return;
+            }
 
-        // Optimistically add the message to the UI
-        setMessages((prev) => [
-            ...prev,
-            {
-                _id: Date.now().toString(),
-                ...msgPayload,
-                createdAt: new Date().toISOString(),
-                status: "sent",
-            },
-        ]);
+            const msgPayload = {
+                chatId: selectedChatId,
+                senderId: user._id,
+                receiverId: otherUser?._id,
+                content: messageText.trim(),
+            };
 
+            // Send via socket instead of API for real-time
+            socket.emit("send_message", msgPayload);
+
+            // Optimistically add the message to the UI
+            setMessages((prev) => [
+                ...prev,
+                {
+                    _id: Date.now().toString(),
+                    ...msgPayload,
+                    createdAt: new Date().toISOString(),
+                    status: "sent",
+                },
+            ]);
+
+            setMessageText("");
+            fetchChats(); // Update sidebar lastMessage
+        } catch (error) {
+            console.error("Error managing message:", error);
+        }
+    };
+
+    const handleEditClick = (msg) => {
+        setEditingMessageId(msg._id);
+        setMessageText(msg.content);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMessageId(null);
         setMessageText("");
-        fetchChats(); // Update sidebar lastMessage
+    };
+
+    const handleDeleteClick = (msgId) => {
+        setMessageToDelete(msgId);
+    };
+
+    const confirmDelete = async () => {
+        if (!messageToDelete) return;
+
+        try {
+            await API.delete(`/messages/${messageToDelete}`);
+            // Optimistically update
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m._id === messageToDelete
+                        ? { ...m, deleted: true, content: "This message was deleted" }
+                        : m
+                )
+            );
+            fetchChats();
+        } catch (error) {
+            console.error("Failed to delete message", error);
+        } finally {
+            setMessageToDelete(null);
+        }
+    };
+
+    const cancelDelete = () => {
+        setMessageToDelete(null);
     };
 
     const handleKeyDown = (e) => {
@@ -492,6 +583,7 @@ function Chat() {
                                         const isOwn =
                                             msg.senderId === user._id ||
                                             msg.senderId?._id === user._id;
+
                                         return (
                                             <div
                                                 key={msg._id}
@@ -506,13 +598,40 @@ function Chat() {
                                                         ...(isOwn
                                                             ? styles.ownBubble
                                                             : styles.otherBubble),
+                                                        ...(msg.deleted ? styles.deletedBubble : {}),
                                                     }}
                                                 >
-                                                    <p style={styles.messageContent}>{msg.content}</p>
-                                                    <span style={styles.messageTime}>
-                                                        {formatMessageTime(msg.createdAt)}
-                                                        {isOwn && getStatusTicks(msg.status)}
-                                                    </span>
+                                                    <p style={{
+                                                        ...styles.messageContent,
+                                                        ...(msg.deleted ? { fontStyle: "italic", opacity: 0.7 } : {})
+                                                    }}>
+                                                        {msg.content}
+                                                    </p>
+                                                    <div style={styles.messageFooter}>
+                                                        <span style={styles.messageTime}>
+                                                            {msg.edited && !msg.deleted && <span style={{ marginRight: '4px' }}>(edited)</span>}
+                                                            {formatMessageTime(msg.createdAt)}
+                                                            {isOwn && getStatusTicks(msg.status)}
+                                                        </span>
+                                                        {isOwn && !msg.deleted && (
+                                                            <div style={styles.messageActions}>
+                                                                <button
+                                                                    onClick={() => handleEditClick(msg)}
+                                                                    style={styles.actionBtn}
+                                                                    title="Edit message"
+                                                                >
+                                                                    ✎
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteClick(msg._id)}
+                                                                    style={styles.actionBtn}
+                                                                    title="Delete message"
+                                                                >
+                                                                    🗑
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -522,24 +641,33 @@ function Chat() {
                             </div>
 
                             {/* Message Input */}
-                            <div style={styles.inputBar}>
-                                <input
-                                    value={messageText}
-                                    onChange={handleInputChange}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Type a message..."
-                                    style={styles.messageInput}
-                                />
-                                <button
-                                    onClick={handleSendMessage}
-                                    disabled={!messageText.trim()}
-                                    style={{
-                                        ...styles.sendBtn,
-                                        opacity: messageText.trim() ? 1 : 0.4,
-                                    }}
-                                >
-                                    ➤
-                                </button>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {editingMessageId && (
+                                    <div style={styles.editBanner}>
+                                        <span style={{ fontSize: '12px', color: '#667eea' }}>Editing message...</span>
+                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn}>✕</button>
+                                    </div>
+                                )}
+                                <div style={styles.inputBar}>
+                                    <input
+                                        value={messageText}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Type a message..."
+                                        style={styles.messageInput}
+                                        autoFocus={!!editingMessageId}
+                                    />
+                                    <button
+                                        onClick={handleSendMessage}
+                                        disabled={!messageText.trim()}
+                                        style={{
+                                            ...styles.sendBtn,
+                                            opacity: messageText.trim() ? 1 : 0.4,
+                                        }}
+                                    >
+                                        {editingMessageId ? "✓" : "➤"}
+                                    </button>
+                                </div>
                             </div>
                         </>
                     ) : (
@@ -563,6 +691,30 @@ function Chat() {
                         onClose={() => setShowUserList(false)}
                         onChatCreated={handleChatCreated}
                     />
+                )}
+
+                {/* Delete Confirmation Modal */}
+                {messageToDelete && (
+                    <div style={styles.modalOverlay}>
+                        <div style={styles.modalContent}>
+                            <h3 style={{ margin: "0 0 16px" }}>Delete Message</h3>
+                            <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
+                                Are you sure you want to delete this message? This action cannot be undone.
+                            </p>
+                            <div style={styles.modalActions}>
+                                <button onClick={cancelDelete} style={styles.modalBtn}>
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    style={{ ...styles.modalBtn, ...styles.modalBtnDanger }}
+                                    id="confirm-delete-btn"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         </>
@@ -829,6 +981,103 @@ const styles = {
         fontSize: "12px",
         color: "#60a5fa",
         letterSpacing: "-2px",
+    },
+    messageFooter: {
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap: "8px",
+        marginTop: "4px",
+    },
+    messageActions: {
+        display: "flex",
+        gap: "4px",
+        opacity: 0,
+        transition: "opacity 0.2s",
+        position: "absolute",
+        top: "4px",
+        right: "8px",
+        background: "inherit",
+        padding: "2px",
+        borderRadius: "4px",
+    },
+    // Adding a hover effect for messageRow to show actions
+    // Note: Inline styles don't support pseudo-classes easily, so we might need css for the hover
+    // We'll instead use opacity 1 for the actions so they are visible, or we can use a class.
+    // For now, making actions always slightly visible or relying on global CSS.
+    actionBtn: {
+        background: "rgba(0,0,0,0.2)",
+        border: "none",
+        color: "rgba(255,255,255,0.7)",
+        cursor: "pointer",
+        fontSize: "12px", // Slightly larger for better icon visibility
+        padding: "4px",
+        borderRadius: "4px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        WebkitTextStroke: "1px rgba(0,0,0,0.8)", // Black outline
+        textShadow: "0 1px 2px rgba(0,0,0,0.5)", // Fallback shadow
+    },
+    deletedBubble: {
+        background: "rgba(255,255,255,0.04)",
+        border: "1px dashed rgba(255,255,255,0.1)",
+    },
+    editBanner: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "8px 24px",
+        background: "rgba(102, 126, 234, 0.1)",
+        borderTop: "1px solid rgba(102, 126, 234, 0.2)",
+    },
+    cancelEditBtn: {
+        background: "transparent",
+        border: "none",
+        color: "rgba(255,255,255,0.5)",
+        cursor: "pointer",
+        padding: "2px",
+    },
+
+    /* Modals */
+    modalOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+    },
+    modalContent: {
+        backgroundColor: "#1a1640",
+        padding: "24px",
+        borderRadius: "16px",
+        width: "90%",
+        maxWidth: "400px",
+        border: "1px solid rgba(255,255,255,0.1)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+    },
+    modalActions: {
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "12px",
+    },
+    modalBtn: {
+        background: "rgba(255,255,255,0.1)",
+        border: "none",
+        color: "#fff",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        fontSize: "14px",
+        transition: "background 0.2s",
+    },
+    modalBtnDanger: {
+        background: "#e3342f",
     },
 
     /* Input bar */
