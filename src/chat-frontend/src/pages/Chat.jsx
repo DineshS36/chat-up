@@ -668,68 +668,70 @@ function Chat() {
                                                         ))}
                                                     </div>
                                                 )}
-                                                <div
-                                                    style={{
-                                                        ...styles.messageBubble,
-                                                        ...(isOwn
-                                                            ? styles.ownBubble
-                                                            : styles.otherBubble),
-                                                        ...(msg.deleted ? styles.deletedBubble : {}),
-                                                    }}
-                                                >
-                                                    {msg.replyTo && (
-                                                        <div style={styles.replyPreviewBubble}>
-                                                            <span style={styles.replyPreviewName}>
-                                                                {msg.replyTo.senderId?.name || msg.replyTo.senderId === user._id ? "You" : "User"}
-                                                            </span>
-                                                            <span style={styles.replyPreviewText}>
-                                                                {msg.replyTo.content?.length > 60
-                                                                    ? msg.replyTo.content.substring(0, 60) + "..."
-                                                                    : msg.replyTo.content}
+                                                <div style={styles.messageContainer}>
+                                                    <div
+                                                        style={{
+                                                            ...styles.messageBubble,
+                                                            ...(isOwn
+                                                                ? styles.ownBubble
+                                                                : styles.otherBubble),
+                                                            ...(msg.deleted ? styles.deletedBubble : {}),
+                                                        }}
+                                                    >
+                                                        {msg.replyTo && (
+                                                            <div style={styles.replyPreviewBubble}>
+                                                                <span style={styles.replyPreviewName}>
+                                                                    {msg.replyTo.senderId?.name || msg.replyTo.senderId === user._id ? "You" : "User"}
+                                                                </span>
+                                                                <span style={styles.replyPreviewText}>
+                                                                    {msg.replyTo.content?.length > 60
+                                                                        ? msg.replyTo.content.substring(0, 60) + "..."
+                                                                        : msg.replyTo.content}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <p style={{
+                                                            ...styles.messageContent,
+                                                            ...(msg.deleted ? { fontStyle: "italic", opacity: 0.7 } : {})
+                                                        }}>
+                                                            {msg.content}
+                                                        </p>
+                                                        <div style={styles.messageFooter}>
+                                                            <span style={styles.messageTime}>
+                                                                {msg.edited && !msg.deleted && <span style={{ marginRight: '4px' }}>(edited)</span>}
+                                                                {formatMessageTime(msg.createdAt)}
+                                                                {isOwn && getStatusTicks(msg.status)}
                                                             </span>
                                                         </div>
+                                                    </div>
+                                                    {/* Reactions below bubble */}
+                                                    {msg.reactions && msg.reactions.length > 0 && (
+                                                        <div style={{
+                                                            ...styles.reactionsRow,
+                                                            justifyContent: isOwn ? "flex-end" : "flex-start",
+                                                        }}>
+                                                            {Object.entries(
+                                                                msg.reactions.reduce((acc, r) => {
+                                                                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                                                    return acc;
+                                                                }, {})
+                                                            ).map(([emoji, count]) => (
+                                                                <button
+                                                                    key={emoji}
+                                                                    onClick={() => handleReaction(msg._id, emoji)}
+                                                                    style={{
+                                                                        ...styles.reactionChip,
+                                                                        ...(msg.reactions.some(
+                                                                            (r) => r.emoji === emoji && (r.userId === user._id || r.userId?.toString() === user._id)
+                                                                        ) ? styles.reactionChipActive : {}),
+                                                                    }}
+                                                                >
+                                                                    {emoji} {count > 1 ? count : ""}
+                                                                </button>
+                                                            ))}
+                                                        </div>
                                                     )}
-                                                    <p style={{
-                                                        ...styles.messageContent,
-                                                        ...(msg.deleted ? { fontStyle: "italic", opacity: 0.7 } : {})
-                                                    }}>
-                                                        {msg.content}
-                                                    </p>
-                                                    <div style={styles.messageFooter}>
-                                                        <span style={styles.messageTime}>
-                                                            {msg.edited && !msg.deleted && <span style={{ marginRight: '4px' }}>(edited)</span>}
-                                                            {formatMessageTime(msg.createdAt)}
-                                                            {isOwn && getStatusTicks(msg.status)}
-                                                        </span>
-                                                    </div>
                                                 </div>
-                                                {/* Reactions display */}
-                                                {msg.reactions && msg.reactions.length > 0 && (
-                                                    <div style={{
-                                                        ...styles.reactionsRow,
-                                                        justifyContent: isOwn ? "flex-end" : "flex-start",
-                                                    }}>
-                                                        {Object.entries(
-                                                            msg.reactions.reduce((acc, r) => {
-                                                                acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                                                                return acc;
-                                                            }, {})
-                                                        ).map(([emoji, count]) => (
-                                                            <button
-                                                                key={emoji}
-                                                                onClick={() => handleReaction(msg._id, emoji)}
-                                                                style={{
-                                                                    ...styles.reactionChip,
-                                                                    ...(msg.reactions.some(
-                                                                        (r) => r.emoji === emoji && (r.userId === user._id || r.userId?.toString() === user._id)
-                                                                    ) ? styles.reactionChipActive : {}),
-                                                                }}
-                                                            >
-                                                                {emoji} {count > 1 ? count : ""}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
                                             </div>
                                         );
                                     })
@@ -1047,9 +1049,16 @@ const styles = {
     messageRow: {
         display: "flex",
         width: "100%",
+        alignItems: "center",
+        marginBottom: "4px",
+    },
+    messageContainer: {
+        display: "flex",
+        flexDirection: "column",
+        maxWidth: "65%",
+        marginBottom: "2px",
     },
     messageBubble: {
-        maxWidth: "65%",
         padding: "10px 16px",
         borderRadius: "16px",
         position: "relative",
@@ -1186,25 +1195,28 @@ const styles = {
     },
     reactionsRow: {
         display: "flex",
-        gap: "4px",
-        marginTop: "2px",
+        gap: "6px",
+        marginTop: "4px",
+        paddingLeft: "8px",
+        paddingRight: "8px",
         flexWrap: "wrap",
     },
     reactionChip: {
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.1)",
-        borderRadius: "12px",
-        padding: "2px 8px",
-        fontSize: "13px",
+        background: "rgba(255,255,255,0.1)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: "14px",
+        padding: "3px 8px",
+        fontSize: "12px",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         gap: "3px",
         color: "rgba(255,255,255,0.7)",
         transition: "background 0.15s",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
     },
     reactionChipActive: {
-        background: "rgba(102, 126, 234, 0.25)",
+        background: "rgba(102, 126, 234, 0.3)",
         borderColor: "rgba(102, 126, 234, 0.5)",
     },
 
