@@ -299,3 +299,61 @@ exports.searchMessages = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    React to a message (toggle)
+// @route   POST /api/messages/:id/react
+// @access  Private
+exports.reactToMessage = async (req, res, next) => {
+  try {
+    const { emoji } = req.body;
+
+    if (!emoji) {
+      const error = new Error('Emoji is required');
+      error.status = 400;
+      throw error;
+    }
+
+    const message = await Message.findById(req.params.id);
+
+    if (!message) {
+      const error = new Error('Message not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const existingIdx = message.reactions.findIndex(
+      (r) => r.userId.toString() === req.userId
+    );
+
+    if (existingIdx !== -1) {
+      if (message.reactions[existingIdx].emoji === emoji) {
+        // Same emoji → remove reaction
+        message.reactions.splice(existingIdx, 1);
+      } else {
+        // Different emoji → update
+        message.reactions[existingIdx].emoji = emoji;
+      }
+    } else {
+      // New reaction
+      message.reactions.push({ userId: req.userId, emoji });
+    }
+
+    await message.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(message.chatId.toString()).emit('reaction_updated', {
+        _id: message._id,
+        reactions: message.reactions,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { _id: message._id, reactions: message.reactions },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

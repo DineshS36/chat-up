@@ -15,6 +15,7 @@ function Chat() {
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [messageToDelete, setMessageToDelete] = useState(null);
     const [replyMessage, setReplyMessage] = useState(null);
+    const [emojiPickerMsgId, setEmojiPickerMsgId] = useState(null);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
@@ -124,6 +125,12 @@ function Chat() {
             fetchChats();
         };
 
+        const handleReactionUpdated = ({ _id, reactions }) => {
+            setMessages((prev) =>
+                prev.map((m) => (m._id === _id ? { ...m, reactions } : m))
+            );
+        };
+
         socket.on("receive_message", handleReceive);
         socket.on("message_delivered", handleDelivered);
         socket.on("messages_read", handleRead);
@@ -132,6 +139,7 @@ function Chat() {
         socket.on("user_status_update", handleUserStatusUpdate);
         socket.on("message_updated", handleMessageUpdated);
         socket.on("message_deleted", handleMessageDeleted);
+        socket.on("reaction_updated", handleReactionUpdated);
 
         return () => {
             socket.off("receive_message", handleReceive);
@@ -142,6 +150,7 @@ function Chat() {
             socket.off("user_status_update", handleUserStatusUpdate);
             socket.off("message_updated", handleMessageUpdated);
             socket.off("message_deleted", handleMessageDeleted);
+            socket.off("reaction_updated", handleReactionUpdated);
         };
     }, [selectedChatId]);
 
@@ -344,6 +353,15 @@ function Chat() {
 
     const cancelDelete = () => {
         setMessageToDelete(null);
+    };
+
+    const handleReaction = async (msgId, emoji) => {
+        try {
+            await API.post(`/messages/${msgId}/react`, { emoji });
+            setEmojiPickerMsgId(null);
+        } catch (error) {
+            console.error("Failed to react", error);
+        }
     };
 
     const handleKeyDown = (e) => {
@@ -610,6 +628,13 @@ function Chat() {
                                                         >
                                                             ↩
                                                         </button>
+                                                        <button
+                                                            onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg._id ? null : msg._id)}
+                                                            style={styles.actionBtn}
+                                                            title="React"
+                                                        >
+                                                            😊
+                                                        </button>
                                                         {isOwn && (
                                                             <>
                                                                 <button
@@ -628,6 +653,19 @@ function Chat() {
                                                                 </button>
                                                             </>
                                                         )}
+                                                    </div>
+                                                )}
+                                                {emojiPickerMsgId === msg._id && (
+                                                    <div style={styles.emojiPicker}>
+                                                        {["👍", "❤️", "😂", "😮", "😢"].map((em) => (
+                                                            <button
+                                                                key={em}
+                                                                onClick={() => handleReaction(msg._id, em)}
+                                                                style={styles.emojiBtn}
+                                                            >
+                                                                {em}
+                                                            </button>
+                                                        ))}
                                                     </div>
                                                 )}
                                                 <div
@@ -665,6 +703,33 @@ function Chat() {
                                                         </span>
                                                     </div>
                                                 </div>
+                                                {/* Reactions display */}
+                                                {msg.reactions && msg.reactions.length > 0 && (
+                                                    <div style={{
+                                                        ...styles.reactionsRow,
+                                                        justifyContent: isOwn ? "flex-end" : "flex-start",
+                                                    }}>
+                                                        {Object.entries(
+                                                            msg.reactions.reduce((acc, r) => {
+                                                                acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                                                return acc;
+                                                            }, {})
+                                                        ).map(([emoji, count]) => (
+                                                            <button
+                                                                key={emoji}
+                                                                onClick={() => handleReaction(msg._id, emoji)}
+                                                                style={{
+                                                                    ...styles.reactionChip,
+                                                                    ...(msg.reactions.some(
+                                                                        (r) => r.emoji === emoji && (r.userId === user._id || r.userId?.toString() === user._id)
+                                                                    ) ? styles.reactionChipActive : {}),
+                                                                }}
+                                                            >
+                                                                {emoji} {count > 1 ? count : ""}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })
@@ -1096,6 +1161,51 @@ const styles = {
         background: "rgba(74, 222, 128, 0.08)",
         borderTop: "1px solid rgba(74, 222, 128, 0.2)",
         borderLeft: "3px solid #4ade80",
+    },
+
+    /* Reaction styles */
+    emojiPicker: {
+        display: "flex",
+        gap: "4px",
+        background: "rgba(0,0,0,0.85)",
+        borderRadius: "20px",
+        padding: "4px 8px",
+        alignItems: "center",
+        marginRight: "8px",
+        flexShrink: 0,
+    },
+    emojiBtn: {
+        background: "transparent",
+        border: "none",
+        fontSize: "18px",
+        cursor: "pointer",
+        padding: "2px 4px",
+        borderRadius: "6px",
+        transition: "transform 0.15s",
+        lineHeight: 1,
+    },
+    reactionsRow: {
+        display: "flex",
+        gap: "4px",
+        marginTop: "2px",
+        flexWrap: "wrap",
+    },
+    reactionChip: {
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: "12px",
+        padding: "2px 8px",
+        fontSize: "13px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "3px",
+        color: "rgba(255,255,255,0.7)",
+        transition: "background 0.15s",
+    },
+    reactionChipActive: {
+        background: "rgba(102, 126, 234, 0.25)",
+        borderColor: "rgba(102, 126, 234, 0.5)",
     },
 
     editBanner: {

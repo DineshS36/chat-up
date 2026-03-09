@@ -5,7 +5,8 @@ const {
   markAsRead,
   editMessage,
   deleteMessage,
-  searchMessages
+  searchMessages,
+  reactToMessage
 } = require('../controllers/messageController');
 const auth = require('../middleware/auth');
 
@@ -17,6 +18,7 @@ router.use(auth);
 router.get('/search/:chatId', searchMessages);
 router.get('/:chatId', getMessages);
 router.post('/', sendMessage);
+router.post('/:id/react', reactToMessage);
 router.put('/read/:chatId', markAsRead);
 router.put('/:id', editMessage);
 router.delete('/:id', deleteMessage);
