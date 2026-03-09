@@ -1006,18 +1006,17 @@ const styles = {
     // We'll instead use opacity 1 for the actions so they are visible, or we can use a class.
     // For now, making actions always slightly visible or relying on global CSS.
     actionBtn: {
-        background: "rgba(0,0,0,0.2)",
-        border: "none",
-        color: "rgba(255,255,255,0.7)",
+        background: "rgba(0,0,0,0.85)",
+        border: "1px solid #000",
+        color: "#fff",
         cursor: "pointer",
-        fontSize: "12px", // Slightly larger for better icon visibility
-        padding: "4px",
-        borderRadius: "4px",
+        fontSize: "12px",
+        padding: "4px 6px",
+        borderRadius: "6px",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        WebkitTextStroke: "1px rgba(0,0,0,0.8)", // Black outline
-        textShadow: "0 1px 2px rgba(0,0,0,0.5)", // Fallback shadow
+        fontWeight: "bold",
     },
     deletedBubble: {
         background: "rgba(255,255,255,0.04)",
