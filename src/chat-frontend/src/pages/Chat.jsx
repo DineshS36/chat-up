@@ -17,11 +17,16 @@ function Chat() {
     const [replyMessage, setReplyMessage] = useState(null);
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState(null);
     const [selectedMessages, setSelectedMessages] = useState([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [currentResultIndex, setCurrentResultIndex] = useState(0);
+    const [showSearch, setShowSearch] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
+    const messageRefs = useRef({});
     const navigate = useNavigate();
 
     // Get current user from localStorage
@@ -416,6 +421,55 @@ function Chat() {
         });
     };
 
+    // ─── Search handlers ───
+    const handleSearch = (query) => {
+        setSearchQuery(query);
+        if (!query.trim()) {
+            setSearchResults([]);
+            setCurrentResultIndex(0);
+            return;
+        }
+        const results = messages
+            .map((msg, idx) => ({ msgId: msg._id, idx }))
+            .filter(({ idx }) =>
+                messages[idx].content?.toLowerCase().includes(query.toLowerCase()) &&
+                !messages[idx].deleted
+            );
+        setSearchResults(results);
+        setCurrentResultIndex(0);
+        if (results.length > 0) {
+            scrollToMessage(results[0].msgId);
+        }
+    };
+
+    const scrollToMessage = (msgId) => {
+        const el = messageRefs.current[msgId];
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    };
+
+    const goToNextResult = () => {
+        if (searchResults.length === 0) return;
+        const next = (currentResultIndex + 1) % searchResults.length;
+        setCurrentResultIndex(next);
+        scrollToMessage(searchResults[next].msgId);
+    };
+
+    const goToPrevResult = () => {
+        if (searchResults.length === 0) return;
+        const prev = (currentResultIndex - 1 + searchResults.length) % searchResults.length;
+        setCurrentResultIndex(prev);
+        scrollToMessage(searchResults[prev].msgId);
+    };
+
+    const closeSearch = () => {
+        setShowSearch(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        setCurrentResultIndex(0);
+    };
+
     // ─── Helpers ───
     const getChatName = (chat) => {
         if (chat.isGroupChat) return chat.name;
@@ -621,7 +675,7 @@ function Chat() {
                             {/* Chat Header */}
                             <div style={styles.chatHeader}>
                                 <div style={styles.avatar}>{getInitial(selectedChat)}</div>
-                                <div>
+                                <div style={{ flex: 1 }}>
                                     <h3 style={styles.chatHeaderName}>
                                         {getChatName(selectedChat)}
                                     </h3>
@@ -637,7 +691,43 @@ function Chat() {
                                         </span>
                                     )}
                                 </div>
+                                <button
+                                    onClick={() => showSearch ? closeSearch() : setShowSearch(true)}
+                                    style={styles.searchToggleBtn}
+                                    title="Search messages"
+                                >
+                                    🔍
+                                </button>
                             </div>
+
+                            {/* Search Bar */}
+                            {showSearch && (
+                                <div style={styles.searchBar}>
+                                    <input
+                                        type="text"
+                                        placeholder="Search in chat..."
+                                        value={searchQuery}
+                                        onChange={(e) => handleSearch(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Escape") closeSearch();
+                                            if (e.key === "Enter") e.shiftKey ? goToPrevResult() : goToNextResult();
+                                        }}
+                                        style={styles.searchInput}
+                                        autoFocus
+                                    />
+                                    {searchResults.length > 0 && (
+                                        <span style={styles.searchCount}>
+                                            {currentResultIndex + 1}/{searchResults.length}
+                                        </span>
+                                    )}
+                                    {searchQuery && searchResults.length === 0 && (
+                                        <span style={styles.searchCount}>No results</span>
+                                    )}
+                                    <button onClick={goToPrevResult} style={styles.searchNavBtn} title="Previous">▲</button>
+                                    <button onClick={goToNextResult} style={styles.searchNavBtn} title="Next">▼</button>
+                                    <button onClick={closeSearch} style={styles.searchNavBtn} title="Close">✕</button>
+                                </div>
+                            )}
 
                             {/* Messages Area */}
                             <div style={styles.messagesArea}>
@@ -683,6 +773,7 @@ function Chat() {
                                         return (
                                             <div
                                                 key={msg._id}
+                                                ref={(el) => { messageRefs.current[msg._id] = el; }}
                                                 className="msg-row"
                                                 onClick={(e) => {
                                                     if (e.ctrlKey || e.metaKey) {
@@ -755,6 +846,11 @@ function Chat() {
                                                                 : styles.otherBubble),
                                                             ...(msg.deleted ? styles.deletedBubble : {}),
                                                             ...groupedRadius,
+                                                            ...(searchQuery && !msg.deleted && msg.content?.toLowerCase().includes(searchQuery.toLowerCase())
+                                                                ? (searchResults[currentResultIndex]?.msgId === msg._id
+                                                                    ? styles.searchMatchCurrent
+                                                                    : styles.searchMatch)
+                                                                : {}),
                                                         }}
                                                     >
                                                         {msg.replyTo && (
@@ -1458,6 +1554,60 @@ const styles = {
         fontSize: "16px",
         cursor: "pointer",
         padding: "4px 8px",
+    },
+
+    /* Search */
+    searchToggleBtn: {
+        background: "transparent",
+        border: "none",
+        fontSize: "18px",
+        cursor: "pointer",
+        padding: "6px",
+        borderRadius: "8px",
+        flexShrink: 0,
+    },
+    searchBar: {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "8px 16px",
+        background: "rgba(255,255,255,0.05)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+    },
+    searchInput: {
+        flex: 1,
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: "8px",
+        padding: "8px 14px",
+        fontSize: "13px",
+        color: "#fff",
+        outline: "none",
+    },
+    searchCount: {
+        fontSize: "12px",
+        color: "rgba(255,255,255,0.5)",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+    },
+    searchNavBtn: {
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        color: "#fff",
+        fontSize: "12px",
+        cursor: "pointer",
+        padding: "6px 8px",
+        borderRadius: "6px",
+        flexShrink: 0,
+    },
+    searchMatch: {
+        outline: "2px solid rgba(255, 255, 0, 0.35)",
+        outlineOffset: "-2px",
+    },
+    searchMatchCurrent: {
+        outline: "2px solid rgba(255, 255, 0, 0.8)",
+        outlineOffset: "-2px",
+        boxShadow: "0 0 12px rgba(255, 255, 0, 0.3)",
     },
 };
 
