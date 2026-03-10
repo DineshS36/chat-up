@@ -16,6 +16,7 @@ function Chat() {
     const [messageToDelete, setMessageToDelete] = useState(null);
     const [replyMessage, setReplyMessage] = useState(null);
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState(null);
+    const [selectedMessages, setSelectedMessages] = useState([]);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
@@ -369,6 +370,50 @@ function Chat() {
             e.preventDefault();
             handleSendMessage();
         }
+        // Escape to clear selection
+        if (e.key === "Escape" && selectedMessages.length > 0) {
+            setSelectedMessages([]);
+        }
+    };
+
+    // ─── Selection handlers ───
+    const toggleMessageSelection = (msgId) => {
+        setSelectedMessages((prev) =>
+            prev.includes(msgId)
+                ? prev.filter((id) => id !== msgId)
+                : [...prev, msgId]
+        );
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedMessages.length === 0) return;
+        try {
+            await Promise.all(
+                selectedMessages.map((id) => API.delete(`/messages/${id}`))
+            );
+            setMessages((prev) =>
+                prev.map((m) =>
+                    selectedMessages.includes(m._id)
+                        ? { ...m, deleted: true, content: "This message was deleted" }
+                        : m
+                )
+            );
+            fetchChats();
+        } catch (error) {
+            console.error("Bulk delete failed", error);
+        } finally {
+            setSelectedMessages([]);
+        }
+    };
+
+    const handleCopySelected = () => {
+        const text = selectedMessages
+            .map((id) => messages.find((m) => m._id === id)?.content)
+            .filter(Boolean)
+            .join("\n");
+        navigator.clipboard.writeText(text).then(() => {
+            setSelectedMessages([]);
+        });
     };
 
     // ─── Helpers ───
@@ -639,10 +684,17 @@ function Chat() {
                                             <div
                                                 key={msg._id}
                                                 className="msg-row"
+                                                onClick={(e) => {
+                                                    if (e.ctrlKey || e.metaKey) {
+                                                        e.preventDefault();
+                                                        toggleMessageSelection(msg._id);
+                                                    }
+                                                }}
                                                 style={{
                                                     ...styles.messageRow,
                                                     justifyContent: isOwn ? "flex-end" : "flex-start",
                                                     ...(isGrouped ? { marginBottom: "1px" } : {}),
+                                                    ...(selectedMessages.includes(msg._id) ? styles.selectedRow : {}),
                                                 }}
                                             >
                                                 {!msg.deleted && (
@@ -765,6 +817,26 @@ function Chat() {
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
+
+                            {/* Selection Toolbar */}
+                            {selectedMessages.length > 0 && (
+                                <div style={styles.selectionToolbar}>
+                                    <span style={styles.selectionCount}>
+                                        {selectedMessages.length} selected
+                                    </span>
+                                    <div style={{ display: "flex", gap: "8px" }}>
+                                        <button onClick={handleCopySelected} style={styles.selectionBtn}>
+                                            📋 Copy
+                                        </button>
+                                        <button onClick={handleBulkDelete} style={styles.selectionBtnDanger}>
+                                            🗑 Delete
+                                        </button>
+                                        <button onClick={() => setSelectedMessages([])} style={styles.selectionBtnClear}>
+                                            ✕
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Message Input */}
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1338,6 +1410,54 @@ const styles = {
         justifyContent: "center",
         transition: "opacity 0.15s",
         flexShrink: 0,
+    },
+
+    /* Selection Mode */
+    selectedRow: {
+        background: "rgba(102, 126, 234, 0.15)",
+        borderRadius: "10px",
+        transition: "background 0.15s",
+    },
+    selectionToolbar: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 24px",
+        background: "rgba(102, 126, 234, 0.12)",
+        borderTop: "1px solid rgba(102, 126, 234, 0.25)",
+    },
+    selectionCount: {
+        fontSize: "13px",
+        fontWeight: 600,
+        color: "#a5b4fc",
+    },
+    selectionBtn: {
+        background: "rgba(255,255,255,0.1)",
+        border: "1px solid rgba(255,255,255,0.15)",
+        color: "#fff",
+        fontSize: "12px",
+        padding: "6px 14px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        transition: "background 0.15s",
+    },
+    selectionBtnDanger: {
+        background: "rgba(239, 68, 68, 0.2)",
+        border: "1px solid rgba(239, 68, 68, 0.3)",
+        color: "#fca5a5",
+        fontSize: "12px",
+        padding: "6px 14px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        transition: "background 0.15s",
+    },
+    selectionBtnClear: {
+        background: "transparent",
+        border: "none",
+        color: "rgba(255,255,255,0.5)",
+        fontSize: "16px",
+        cursor: "pointer",
+        padding: "4px 8px",
     },
 };
 
