@@ -44,3 +44,6 @@ Thumbs.db
 # Build files
 dist/
 build/
+
+# Uploads
+src/uploads/
