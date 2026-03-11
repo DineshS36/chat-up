@@ -5,13 +5,17 @@ const fs = require('fs');
 // Ensure upload directories exist
 const imagesDir = path.join(__dirname, '..', 'uploads', 'images');
 const filesDir = path.join(__dirname, '..', 'uploads', 'files');
+const audioDir = path.join(__dirname, '..', 'uploads', 'audio');
 fs.mkdirSync(imagesDir, { recursive: true });
 fs.mkdirSync(filesDir, { recursive: true });
+fs.mkdirSync(audioDir, { recursive: true });
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         if (file.mimetype.startsWith('image')) {
             cb(null, imagesDir);
+        } else if (file.mimetype.startsWith('audio')) {
+            cb(null, audioDir);
         } else {
             cb(null, filesDir);
         }
@@ -23,7 +27,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    // Allow images and common file types
+    // Allow images, common file types, and audio
     const allowedTypes = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
         'application/pdf',
@@ -33,7 +37,8 @@ const fileFilter = (req, file, cb) => {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'text/plain',
         'application/zip',
-        'application/x-rar-compressed'
+        'application/x-rar-compressed',
+        'audio/webm', 'audio/ogg', 'audio/mp3', 'audio/wav', 'audio/mpeg'
     ];
 
     if (allowedTypes.includes(file.mimetype)) {

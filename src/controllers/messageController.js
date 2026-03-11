@@ -378,7 +378,8 @@ exports.uploadFile = async (req, res, next) => {
     }
 
     const isImage = req.file.mimetype.startsWith('image');
-    const subDir = isImage ? 'images' : 'files';
+    const isAudio = req.file.mimetype.startsWith('audio');
+    const subDir = isImage ? 'images' : isAudio ? 'audio' : 'files';
     const fileUrl = `/uploads/${subDir}/${req.file.filename}`;
 
     const message = await Message.create({
@@ -386,7 +387,7 @@ exports.uploadFile = async (req, res, next) => {
       senderId: req.userId,
       receiverId,
       content: fileUrl,
-      type: isImage ? 'image' : 'file',
+      type: isImage ? 'image' : isAudio ? 'audio' : 'file',
       fileName: req.file.originalname,
       status: 'sent'
     });

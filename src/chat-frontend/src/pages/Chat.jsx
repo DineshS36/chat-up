@@ -27,6 +27,15 @@ function Chat() {
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [onlineStatuses, setOnlineStatuses] = useState({});
+
+    // Voice Recording State
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const recorderRef = useRef(null);
+    const mediaStreamRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const recordingIntervalRef = useRef(null);
+
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const messageRefs = useRef({});
@@ -58,6 +67,12 @@ function Chat() {
             socket.off("user_typing");
             socket.off("user_stop_typing");
             socket.off("user_status_update");
+
+            // Cleanup audio streams if unmounted
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(t => t.stop());
+            }
+            if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
         };
     }, []);
 
@@ -540,6 +555,77 @@ function Chat() {
 
         // Reset file input
         if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    // ─── Voice Recording Handlers ───
+    const formatDuration = (seconds) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
+    const startRecording = async () => {
+        if (!selectedChatId) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+            const mediaRecorder = new MediaRecorder(stream);
+            recorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+
+                // Upload the audio file similar to image/file handles
+                const selectedChat = chats.find((c) => c._id === selectedChatId);
+                const otherUser = selectedChat?.participants?.find((p) => p._id !== user._id);
+                if (!otherUser && !selectedChat?.isGroupChat) return;
+
+                const formData = new FormData();
+                // Send default name because Blob doesn't have an originalname property
+                formData.append("file", audioBlob, `VoiceMessage_${Date.now()}.webm`);
+                formData.append("chatId", selectedChatId);
+                formData.append("receiverId", otherUser?._id || "");
+
+                try {
+                    await API.post("/messages/upload", formData, {
+                        headers: { "Content-Type": "multipart/form-data" },
+                    });
+                    fetchChats();
+                } catch (error) {
+                    console.error("Audio upload failed", error);
+                }
+
+                // Cleanup stream post-upload
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingDuration(0);
+
+            recordingIntervalRef.current = setInterval(() => {
+                setRecordingDuration((prev) => prev + 1);
+            }, 1000);
+
+        } catch (error) {
+            console.error("Microphone access denied or error:", error);
+            alert("Could not access microphone.");
+        }
+    };
+
+    const stopRecording = () => {
+        if (recorderRef.current && isRecording) {
+            recorderRef.current.stop();
+            setIsRecording(false);
+            clearInterval(recordingIntervalRef.current);
+        }
     };
 
     // ─── Helpers ───
@@ -1025,6 +1111,13 @@ function Chat() {
                                                                         <span style={styles.fileIcon}>📄</span>
                                                                         <span style={styles.fileName}>{msg.fileName || "File"}</span>
                                                                     </a>
+                                                                ) : msg.type === "audio" ? (
+                                                                    <div style={styles.audioContainer}>
+                                                                        <span style={styles.audioIcon}>🎤</span>
+                                                                        <audio controls style={styles.audioPlayer}>
+                                                                            <source src={`http://localhost:5000${msg.content}`} />
+                                                                        </audio>
+                                                                    </div>
                                                                 ) : msg.content
                                                             }
                                                         </p>
@@ -1113,37 +1206,57 @@ function Chat() {
                                     </div>
                                 )}
                                 <div style={styles.inputBar}>
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        onChange={handleFileUpload}
-                                        style={{ display: 'none' }}
-                                    />
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        style={styles.attachBtn}
-                                        title="Attach file"
-                                    >
-                                        📎
-                                    </button>
-                                    <input
-                                        value={messageText}
-                                        onChange={handleInputChange}
-                                        onKeyDown={handleKeyDown}
-                                        placeholder="Type a message..."
-                                        style={styles.messageInput}
-                                        autoFocus={!!editingMessageId}
-                                    />
-                                    <button
-                                        onClick={handleSendMessage}
-                                        disabled={!messageText.trim()}
-                                        style={{
-                                            ...styles.sendBtn,
-                                            opacity: messageText.trim() ? 1 : 0.4,
-                                        }}
-                                    >
-                                        {editingMessageId ? "✓" : "➤"}
-                                    </button>
+                                    {isRecording ? (
+                                        <div style={styles.recordingBanner}>
+                                            <div style={styles.recordingIndicator}></div>
+                                            <span style={styles.recordingTimer}>{formatDuration(recordingDuration)}</span>
+                                            <span style={styles.recordingText}>Recording...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                onChange={handleFileUpload}
+                                                style={{ display: 'none' }}
+                                            />
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                style={styles.attachBtn}
+                                                title="Attach file"
+                                            >
+                                                📎
+                                            </button>
+                                            <input
+                                                value={messageText}
+                                                onChange={handleInputChange}
+                                                onKeyDown={handleKeyDown}
+                                                placeholder="Type a message..."
+                                                style={styles.messageInput}
+                                                autoFocus={!!editingMessageId}
+                                            />
+                                        </>
+                                    )}
+
+                                    {!messageText.trim() && !editingMessageId ? (
+                                        <button
+                                            onClick={isRecording ? stopRecording : startRecording}
+                                            style={{
+                                                ...styles.micBtn,
+                                                ...(isRecording ? styles.micBtnActive : {})
+                                            }}
+                                            title={isRecording ? "Stop & Send Recording" : "Record Voice Message"}
+                                        >
+                                            {isRecording ? "⏹️" : "🎤"}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={handleSendMessage}
+                                            style={styles.sendBtn}
+                                        >
+                                            {editingMessageId ? "✓" : "➤"}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </>
@@ -1945,6 +2058,74 @@ const styles = {
         padding: "6px",
         flexShrink: 0,
         borderRadius: "8px",
+    },
+
+    /* Audio Messages & Recording */
+    audioContainer: {
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        background: "rgba(255,255,255,0.06)",
+        padding: "8px 12px",
+        borderRadius: "24px",
+        border: "1px solid rgba(255,255,255,0.08)",
+    },
+    audioIcon: {
+        fontSize: "20px",
+    },
+    audioPlayer: {
+        height: "36px",
+        outline: "none",
+        minWidth: "220px",
+    },
+    micBtn: {
+        background: "transparent",
+        border: "none",
+        fontSize: "20px",
+        cursor: "pointer",
+        padding: "8px",
+        flexShrink: 0,
+        borderRadius: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "all 0.2s",
+        color: "#fff",
+    },
+    micBtnActive: {
+        background: "rgba(239, 68, 68, 0.2)",
+        color: "#ef4444",
+        animation: "pulse 1.5s infinite",
+    },
+    recordingBanner: {
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "0 16px",
+        background: "linear-gradient(90deg, rgba(239,68,68,0.1) 0%, rgba(0,0,0,0) 100%)",
+        height: "100%",
+        borderRadius: "24px",
+    },
+    recordingIndicator: {
+        width: "12px",
+        height: "12px",
+        background: "#ef4444",
+        borderRadius: "50%",
+        animation: "blink 1s infinite",
+        boxShadow: "0 0 8px #ef4444",
+    },
+    recordingTimer: {
+        fontSize: "15px",
+        fontFamily: "monospace",
+        color: "#f87171",
+        fontWeight: "bold",
+        width: "48px",
+    },
+    recordingText: {
+        color: "rgba(255,255,255,0.6)",
+        fontSize: "14px",
+        fontStyle: "italic",
     },
 
     /* Image Preview Modal */
