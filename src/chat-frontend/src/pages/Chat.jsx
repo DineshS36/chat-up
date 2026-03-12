@@ -32,6 +32,11 @@ function Chat() {
     const [showGroupInfo, setShowGroupInfo] = useState(false);
     const [groupToAddUsers, setGroupToAddUsers] = useState(null);
 
+    // Mention Autocomplete State
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentionSuggestions, setMentionSuggestions] = useState([]);
+    const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+
     // Voice Recording State
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
@@ -195,6 +200,15 @@ function Chat() {
         socket.on("user_joined_group", handleGroupUpdated);
         socket.on("user_left_group", handleUserLeft);
 
+        const handleMentionNotification = (data) => {
+            console.log(`You were mentioned by ${data.senderName} in ${data.chatName || "a chat"}`);
+            // If mentioned in a different chat than the one open, update sidebar
+            if (data.chatId !== selectedChatId) {
+                fetchChats();
+            }
+        };
+        socket.on("mention_notification", handleMentionNotification);
+
         return () => {
             socket.off("receive_message", handleReceive);
             socket.off("message_delivered", handleDelivered);
@@ -208,6 +222,7 @@ function Chat() {
             socket.off("pinned_updated", handlePinnedUpdated);
             socket.off("user_joined_group", handleGroupUpdated);
             socket.off("user_left_group", handleUserLeft);
+            socket.off("mention_notification", handleMentionNotification);
         };
     }, [selectedChatId]);
 
@@ -280,7 +295,31 @@ function Chat() {
 
     // ─── Typing emit ───
     const handleInputChange = (e) => {
-        setMessageText(e.target.value);
+        const value = e.target.value;
+        setMessageText(value);
+
+        // Detect @mention trigger
+        if (selectedChat?.isGroupChat) {
+            const cursorPos = e.target.selectionStart;
+            const textBeforeCursor = value.substring(0, cursorPos);
+            const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
+
+            if (mentionMatch) {
+                const query = mentionMatch[1].toLowerCase();
+                setMentionQuery(query);
+                const participants = selectedChat.participants || [];
+                const filtered = participants.filter(
+                    p => p._id !== user._id && p.name?.toLowerCase().startsWith(query)
+                );
+                setMentionSuggestions(filtered);
+                setShowMentionDropdown(filtered.length > 0);
+            } else {
+                setShowMentionDropdown(false);
+                setMentionSuggestions([]);
+            }
+        } else {
+            setShowMentionDropdown(false);
+        }
 
         if (selectedChatId) {
             socket.emit("typing", {
@@ -296,6 +335,28 @@ function Chat() {
                 });
             }, 1000);
         }
+    };
+
+    const selectMention = (participant) => {
+        const cursorPos = messageText.lastIndexOf("@" + mentionQuery);
+        if (cursorPos === -1) return;
+        const before = messageText.substring(0, cursorPos);
+        const after = messageText.substring(cursorPos + 1 + mentionQuery.length);
+        setMessageText(before + "@" + participant.name + " " + after);
+        setShowMentionDropdown(false);
+        setMentionSuggestions([]);
+    };
+
+    // Render message content with @mention highlighting
+    const renderContentWithMentions = (content) => {
+        if (!content) return content;
+        const parts = content.split(/(@\w+)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith("@")) {
+                return <span key={i} style={{ color: "#4f9cff", fontWeight: 600 }}>{part}</span>;
+            }
+            return part;
+        });
     };
 
     // ─── Send message via socket or API for edits ───
@@ -1212,7 +1273,7 @@ function Chat() {
                                                                             <source src={`http://localhost:5000${msg.content}`} />
                                                                         </audio>
                                                                     </div>
-                                                                ) : msg.content
+                                                                ) : renderContentWithMentions(msg.content)
                                                             }
                                                         </p>
                                                         <div style={styles.messageFooter}>
@@ -1297,6 +1358,39 @@ function Chat() {
                                     <div style={styles.editBanner}>
                                         <span style={{ fontSize: '12px', color: '#667eea' }}>Editing message...</span>
                                         <button onClick={handleCancelEdit} style={styles.cancelEditBtn}>✕</button>
+                                    </div>
+                                )}
+                                {/* Mention Autocomplete Dropdown */}
+                                {showMentionDropdown && mentionSuggestions.length > 0 && (
+                                    <div style={{
+                                        background: "rgba(20, 18, 50, 0.98)",
+                                        border: "1px solid rgba(255,255,255,0.1)",
+                                        borderRadius: "12px",
+                                        padding: "6px 0",
+                                        maxHeight: "160px",
+                                        overflowY: "auto",
+                                        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                                    }}>
+                                        {mentionSuggestions.map(p => (
+                                            <div
+                                                key={p._id}
+                                                onClick={() => selectMention(p)}
+                                                style={{
+                                                    display: "flex", alignItems: "center", gap: "10px",
+                                                    padding: "10px 16px", cursor: "pointer",
+                                                    transition: "background 0.15s",
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                                                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                                            >
+                                                <div style={{ width: "30px", height: "30px", borderRadius: "10px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "13px", color: "#fff", flexShrink: 0 }}>
+                                                    {p.name?.charAt(0).toUpperCase() || "?"}
+                                                </div>
+                                                <span style={{ color: "#fff", fontSize: "14px", fontWeight: 500 }}>
+                                                    @{p.name}
+                                                </span>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                                 <div style={styles.inputBar}>

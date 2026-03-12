@@ -61,6 +61,10 @@ const messageSchema = new mongoose.Schema({
       emoji: String
     }
   ],
+  mentions: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   createdAt: {
     type: Date,
     default: Date.now

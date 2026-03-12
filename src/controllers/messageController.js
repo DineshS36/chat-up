@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const Chat = require('../models/Chat');
+const User = require('../models/User');
 
 // @desc    Get all messages for a chat
 // @route   GET /api/messages/:chatId
@@ -83,13 +84,27 @@ exports.sendMessage = async (req, res, next) => {
       throw error;
     }
 
+    // Detect @mentions in content
+    let mentionIds = [];
+    if (chat.isGroupChat && content) {
+      const mentionMatches = content.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const mentionNames = mentionMatches.map(m => m.slice(1).toLowerCase());
+        const participants = await User.find({ _id: { $in: chat.participants } }).select('name');
+        mentionIds = participants
+          .filter(p => mentionNames.includes(p.name.toLowerCase()))
+          .map(p => p._id);
+      }
+    }
+
     const message = await Message.create({
       chatId,
       senderId: req.userId,
       receiverId,
       content,
       type: 'text',
-      status: 'sent'
+      status: 'sent',
+      mentions: mentionIds
     });
 
     // Update chat's lastMessage
@@ -99,6 +114,23 @@ exports.sendMessage = async (req, res, next) => {
     const populatedMessage = await Message.findById(message._id)
       .populate('senderId', 'username email avatar')
       .populate('receiverId', 'username email avatar');
+
+    // Emit mention notifications
+    if (mentionIds.length > 0) {
+      const io = req.app.get('io');
+      if (io) {
+        const sender = await User.findById(req.userId).select('name');
+        mentionIds.forEach(mentionedUserId => {
+          io.to(mentionedUserId.toString()).emit('mention_notification', {
+            chatId,
+            chatName: chat.name,
+            messageId: message._id,
+            senderName: sender.name,
+            content: content.substring(0, 100)
+          });
+        });
+      }
+    }
 
     res.status(201).json({
       success: true,

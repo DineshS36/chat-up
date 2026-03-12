@@ -59,6 +59,20 @@ const chatSocket = async (io) => {
                     return;
                 }
 
+                // Detect @mentions
+                const chat = await Chat.findById(chatId);
+                let mentionIds = [];
+                if (chat && chat.isGroupChat && content) {
+                    const mentionMatches = content.match(/@(\w+)/g);
+                    if (mentionMatches) {
+                        const mentionNames = mentionMatches.map(m => m.slice(1).toLowerCase());
+                        const participants = await User.find({ _id: { $in: chat.participants } }).select('name');
+                        mentionIds = participants
+                            .filter(p => mentionNames.includes(p.name.toLowerCase()))
+                            .map(p => p._id);
+                    }
+                }
+
                 // Save message to MongoDB
                 const message = await Message.create({
                     chatId,
@@ -68,10 +82,11 @@ const chatSocket = async (io) => {
                     type: 'text',
                     status: 'sent',
                     replyTo: replyTo || null,
+                    mentions: mentionIds,
                 });
 
                 // Update chat's lastMessage and increment unread counts
-                const chat = await Chat.findById(chatId);
+                if (!chat) return;
                 chat.lastMessage = message._id;
 
                 chat.participants.forEach((participantId) => {
@@ -87,6 +102,23 @@ const chatSocket = async (io) => {
                 socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
 
                 console.log(`Message saved: ${message._id} (${senderId} → ${receiverId}) in chat ${chatId}`);
+
+                // Emit mention notifications
+                if (mentionIds.length > 0) {
+                    const sender = await User.findById(senderId).select('name');
+                    mentionIds.forEach(mentionedUserId => {
+                        const mentionedSocketId = onlineUsers.get(mentionedUserId.toString());
+                        if (mentionedSocketId) {
+                            io.to(mentionedSocketId).emit('mention_notification', {
+                                chatId,
+                                chatName: chat.name,
+                                messageId: message._id,
+                                senderName: sender?.name || 'Someone',
+                                content: content.substring(0, 100)
+                            });
+                        }
+                    });
+                }
 
                 // Check if receiver is online
                 const receiverSocketId = onlineUsers.get(receiverId);
@@ -106,6 +138,7 @@ const chatSocket = async (io) => {
                         status: 'delivered',
                         createdAt: message.createdAt,
                         replyTo: message.replyTo,
+                        mentions: message.mentions,
                     });
 
                     // Notify sender that message was delivered
