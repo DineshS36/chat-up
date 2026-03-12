@@ -3,6 +3,40 @@ import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import UserList from "../components/UserList";
 import socket from "../socket/socket";
+import CryptoJS from "crypto-js";
+
+const SECRET_KEY = "chatup-e2e-secret-key";
+
+const encryptText = (text) => {
+    if (!text) return text;
+    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+};
+
+const decryptText = (encryptedData) => {
+    if (!encryptedData) return encryptedData;
+    try {
+        const bytes = CryptoJS.AES.decrypt(encryptedData, SECRET_KEY);
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+        return decrypted || encryptedData;
+    } catch (e) {
+        return encryptedData;
+    }
+};
+
+const decryptMessageObj = (msg) => {
+    if (!msg) return msg;
+    const decrypted = { ...msg };
+    if (decrypted.type === "text") {
+        decrypted.content = decryptText(decrypted.content);
+    }
+    if (decrypted.replyTo && decrypted.replyTo.content) {
+        decrypted.replyTo = {
+            ...decrypted.replyTo,
+            content: decryptText(decrypted.replyTo.content)
+        };
+    }
+    return decrypted;
+};
 
 function Chat() {
     const [chats, setChats] = useState([]);
@@ -107,8 +141,9 @@ function Chat() {
     // ─── Listen for incoming messages ───
     useEffect(() => {
         const handleReceive = (message) => {
-            if (message.chatId === selectedChatId) {
-                setMessages((prev) => [...prev, message]);
+            const decryptedMessage = decryptMessageObj(message);
+            if (decryptedMessage.chatId === selectedChatId) {
+                setMessages((prev) => [...prev, decryptedMessage]);
                 // Mark as read since we have this chat open
                 socket.emit("messages_read", {
                     chatId: selectedChatId,
@@ -117,21 +152,21 @@ function Chat() {
             } else {
                 // Show browser notification for messages in other chats
                 if ("Notification" in window && Notification.permission === "granted") {
-                    const senderName = message.senderId?.name || message.senderName || "Someone";
-                    const body = message.type === "image" ? "📷 Sent a photo"
-                        : message.type === "file" ? "📄 Sent a file"
-                            : message.type === "audio" ? "🎤 Sent a voice message"
-                                : message.content?.substring(0, 100) || "New message";
+                    const senderName = decryptedMessage.senderId?.name || decryptedMessage.senderName || "Someone";
+                    const body = decryptedMessage.type === "image" ? "📷 Sent a photo"
+                        : decryptedMessage.type === "file" ? "📄 Sent a file"
+                            : decryptedMessage.type === "audio" ? "🎤 Sent a voice message"
+                                : decryptedMessage.content?.substring(0, 100) || "New message";
 
                     const notification = new Notification(senderName, {
                         body,
                         icon: "/favicon.ico",
-                        tag: message.chatId, // Prevent duplicate notifications per chat
+                        tag: decryptedMessage.chatId, // Prevent duplicate notifications per chat
                     });
 
                     notification.onclick = () => {
                         window.focus();
-                        setSelectedChatId(message.chatId);
+                        setSelectedChatId(decryptedMessage.chatId);
                         notification.close();
                     };
                 }
@@ -206,7 +241,7 @@ function Chat() {
         };
 
         const handlePinnedUpdated = (pinned) => {
-            setPinnedMessages(pinned);
+            setPinnedMessages(pinned.map(decryptMessageObj));
         };
 
         socket.on("receive_message", handleReceive);
@@ -502,7 +537,13 @@ function Chat() {
         try {
             setLoading(true);
             const res = await API.get("/chats");
-            setChats(res.data.data);
+            const decryptedChats = res.data.data.map(c => {
+                if (c.lastMessage) {
+                    c.lastMessage = decryptMessageObj(c.lastMessage);
+                }
+                return c;
+            });
+            setChats(decryptedChats);
         } catch (err) {
             if (err.response?.status === 401) {
                 localStorage.removeItem("token");
@@ -520,7 +561,7 @@ function Chat() {
         try {
             setLoadingMessages(true);
             const res = await API.get(`/messages/${chatId}`);
-            setMessages(res.data.data);
+            setMessages(res.data.data.map(decryptMessageObj));
         } catch (err) {
             console.error("Failed to load messages:", err);
         } finally {
@@ -618,7 +659,7 @@ function Chat() {
                 // If it's real, send the PUT request
                 if (!editingMessageId.startsWith("17")) {
                     await API.put(`/messages/${editingMessageId}`, {
-                        content: messageText.trim(),
+                        content: encryptText(messageText.trim()),
                     });
                 } else {
                     // Update purely locally if it hasn't hit DB yet (edge case)
@@ -641,7 +682,7 @@ function Chat() {
                 chatId: selectedChatId,
                 senderId: user._id,
                 receiverId: otherUser?._id,
-                content: messageText.trim(),
+                content: encryptText(messageText.trim()),
                 replyTo: replyMessage?._id || null,
             };
 
@@ -654,6 +695,7 @@ function Chat() {
                 {
                     _id: Date.now().toString(),
                     ...msgPayload,
+                    content: messageText.trim(), // Keep plaintext in UI state
                     // Keep full replyTo object for optimistic render
                     replyTo: replyMessage ? { _id: replyMessage._id, content: replyMessage.content, senderId: replyMessage.senderId } : null,
                     createdAt: new Date().toISOString(),
