@@ -37,6 +37,14 @@ function Chat() {
     const [mentionSuggestions, setMentionSuggestions] = useState([]);
     const [showMentionDropdown, setShowMentionDropdown] = useState(false);
 
+    // WebRTC Audio Calling State
+    const [incomingCall, setIncomingCall] = useState(null); // { callerId, callerName, chatId }
+    const [isInCall, setIsInCall] = useState(false);
+    const [callPeerId, setCallPeerId] = useState(null);
+    const localStreamRef = useRef(null);
+    const remoteAudioRef = useRef(null);
+    const peerConnectionRef = useRef(null);
+
     // Voice Recording State
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
@@ -235,6 +243,52 @@ function Chat() {
         };
         socket.on("mention_notification", handleMentionNotification);
 
+        // WebRTC Signaling Listeners
+        const handleIncomingCall = (data) => {
+            setIncomingCall(data);
+        };
+
+        const handleCallAccepted = async ({ receiverId }) => {
+            setCallPeerId(receiverId);
+            setIsInCall(true);
+            await setupWebRTC(receiverId, true);
+        };
+
+        const handleCallRejected = ({ reason }) => {
+            alert(`Call rejected: ${reason}`);
+            endCallLocally();
+        };
+
+        const handleWebRTCSignal = async ({ signal, from }) => {
+            if (!peerConnectionRef.current) {
+                await setupWebRTC(from, false);
+            }
+            try {
+                if (signal.type === 'offer' || signal.type === 'answer') {
+                    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal));
+                    if (signal.type === 'offer') {
+                        const answer = await peerConnectionRef.current.createAnswer();
+                        await peerConnectionRef.current.setLocalDescription(answer);
+                        socket.emit('webrtc_signal', { targetId: from, signal: answer });
+                    }
+                } else if (signal.candidate) {
+                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal));
+                }
+            } catch (err) {
+                console.error("Error handling WebRTC signal:", err);
+            }
+        };
+
+        const handleEndCall = () => {
+            endCallLocally();
+        };
+
+        socket.on("incoming_call", handleIncomingCall);
+        socket.on("call_accepted", handleCallAccepted);
+        socket.on("call_rejected", handleCallRejected);
+        socket.on("webrtc_signal", handleWebRTCSignal);
+        socket.on("end_call", handleEndCall);
+
         return () => {
             socket.off("receive_message", handleReceive);
             socket.off("message_delivered", handleDelivered);
@@ -249,8 +303,110 @@ function Chat() {
             socket.off("user_joined_group", handleGroupUpdated);
             socket.off("user_left_group", handleUserLeft);
             socket.off("mention_notification", handleMentionNotification);
+
+            socket.off("incoming_call", handleIncomingCall);
+            socket.off("call_accepted", handleCallAccepted);
+            socket.off("call_rejected", handleCallRejected);
+            socket.off("webrtc_signal", handleWebRTCSignal);
+            socket.off("end_call", handleEndCall);
         };
     }, [selectedChatId]);
+
+    // ─── WebRTC Handlers ───
+    const setupWebRTC = async (targetId, isInitiator) => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localStreamRef.current = stream;
+
+            const pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+            peerConnectionRef.current = pc;
+
+            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('webrtc_signal', { targetId, signal: event.candidate });
+                }
+            };
+
+            pc.ontrack = (event) => {
+                if (remoteAudioRef.current) {
+                    remoteAudioRef.current.srcObject = event.streams[0];
+                }
+            };
+
+            if (isInitiator) {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('webrtc_signal', { targetId, signal: offer });
+            }
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            alert("Could not access microphone.");
+            endCallLocally();
+        }
+    };
+
+    const endCallLocally = () => {
+        setIsInCall(false);
+        setIncomingCall(null);
+        setCallPeerId(null);
+
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(t => t.stop());
+            localStreamRef.current = null;
+        }
+
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+            peerConnectionRef.current = null;
+        }
+
+        if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = null;
+        }
+    };
+
+    const handleCallUser = () => {
+        const selectedChat = chats.find(c => c._id === selectedChatId);
+        const otherParticipant = selectedChat?.participants.find(p => p._id !== user._id);
+        if (!otherParticipant) return;
+
+        setCallPeerId(otherParticipant._id);
+        socket.emit('call_user', {
+            callerId: user._id,
+            receiverId: otherParticipant._id,
+            callerName: user.name,
+            chatId: selectedChatId
+        });
+        setIsInCall(true);
+    };
+
+    const acceptCall = () => {
+        if (!incomingCall) return;
+        socket.emit('call_accepted', {
+            callerId: incomingCall.callerId,
+            receiverId: user._id
+        });
+        setCallPeerId(incomingCall.callerId);
+        setIsInCall(true);
+        setIncomingCall(null);
+    };
+
+    const rejectCall = () => {
+        if (!incomingCall) return;
+        socket.emit('call_rejected', { callerId: incomingCall.callerId });
+        setIncomingCall(null);
+    };
+
+    const hangUp = () => {
+        if (callPeerId) {
+            socket.emit('end_call', { targetId: callPeerId });
+        }
+        endCallLocally();
+    };
 
     // ─── Fetch messages when chat is selected ───
     useEffect(() => {
@@ -1018,6 +1174,15 @@ function Chat() {
                                 >
                                     🔍
                                 </button>
+                                {!selectedChat?.isGroupChat && (
+                                    <button
+                                        onClick={handleCallUser}
+                                        style={styles.searchToggleBtn}
+                                        title="Call"
+                                    >
+                                        📞
+                                    </button>
+                                )}
                                 {selectedChat?.isGroupChat && (
                                     <button
                                         onClick={() => setShowGroupInfo(true)}
@@ -1676,6 +1841,58 @@ function Chat() {
                         </div>
                     </div>
                 )}
+                {/* Incoming Call Modal */}
+                {incomingCall && !isInCall && (
+                    <div style={styles.modalOverlay}>
+                        <div style={{ ...styles.modalContent, textAlign: "center", padding: "30px", maxWidth: "300px" }}>
+                            <div style={{ fontSize: "40px", marginBottom: "16px", animation: "pulse 1.5s infinite" }}>
+                                📞
+                            </div>
+                            <h3 style={{ margin: "0 0 8px", color: "#fff" }}>Incoming Call</h3>
+                            <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
+                                {incomingCall.callerName} is calling...
+                            </p>
+                            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                                <button onClick={rejectCall} style={{ ...styles.modalBtn, ...styles.modalBtnDanger, flex: 1 }}>
+                                    Reject
+                                </button>
+                                <button onClick={acceptCall} style={{ ...styles.modalBtn, background: "#10b981", borderColor: "#059669", color: "#fff", flex: 1 }}>
+                                    Accept
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Active Call Overlay */}
+                {isInCall && (
+                    <div style={{
+                        position: "fixed", top: "20px", right: "20px", width: "260px",
+                        background: "rgba(20, 18, 50, 0.95)", border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "16px", padding: "20px", zIndex: 9999,
+                        boxShadow: "0 10px 40px rgba(0,0,0,0.5)", textAlign: "center", backdropFilter: "blur(10px)"
+                    }}>
+                        <div style={{ marginBottom: "16px" }}>
+                            <div style={{
+                                width: "60px", height: "60px", borderRadius: "30px",
+                                background: "linear-gradient(135deg, #4ade80, #3b82f6)",
+                                margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: "24px", color: "#fff", animation: "pulse 2s infinite"
+                            }}>
+                                📞
+                            </div>
+                            <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "16px" }}>Voice Call</h4>
+                            <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>
+                                {peerConnectionRef.current?.connectionState === "connected" ? "Connected" : "Calling..."}
+                            </span>
+                        </div>
+                        <button onClick={hangUp} style={{ ...styles.modalBtnDanger, width: "100%", padding: "10px", borderRadius: "10px", cursor: "pointer", fontWeight: 600, border: "none" }}>
+                            End Call
+                        </button>
+                        <audio ref={remoteAudioRef} autoPlay style={{ display: "none" }} />
+                    </div>
+                )}
+
             </div>
         </>
     );

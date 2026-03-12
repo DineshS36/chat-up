@@ -215,6 +215,49 @@ const chatSocket = async (io) => {
             socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
         });
 
+        // ─── WebRTC Signaling for Audio Calls ───────────────────
+        socket.on('call_user', async ({ callerId, receiverId, callerName, chatId }) => {
+            const receiverSocketId = onlineUsers.get(receiverId);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('incoming_call', {
+                    callerId,
+                    callerName,
+                    chatId
+                });
+            } else {
+                // If receiver is offline, instantly reject
+                socket.emit('call_rejected', { reason: 'User is offline' });
+            }
+        });
+
+        socket.on('call_accepted', ({ callerId, receiverId }) => {
+            const callerSocketId = onlineUsers.get(callerId);
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_accepted', { receiverId });
+            }
+        });
+
+        socket.on('call_rejected', ({ callerId }) => {
+            const callerSocketId = onlineUsers.get(callerId);
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_rejected', { reason: 'Call declined' });
+            }
+        });
+
+        socket.on('webrtc_signal', ({ targetId, signal }) => {
+            const targetSocketId = onlineUsers.get(targetId);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('webrtc_signal', { signal, from: Array.from(onlineUsers.entries()).find(([k, v]) => v === socket.id)?.[0] });
+            }
+        });
+
+        socket.on('end_call', ({ targetId }) => {
+            const targetSocketId = onlineUsers.get(targetId);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('end_call');
+            }
+        });
+
         // ─── disconnect ──────────────────────────────────────────
         // Automatically fired when a client disconnects
         // Removes the userId from the online map
