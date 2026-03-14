@@ -9,6 +9,12 @@ const userRoutes = require('./routes/userRoutes');
 const storyRoutes = require('./routes/storyRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
+// Stage 2: Modular Features
+const communityRoutes = require('./modules/community/community.routes');
+const channelRoutes = require('./modules/channel/channel.routes');
+const inviteRoutes = require('./modules/invite/invite.routes');
+const backupRoutes = require('./modules/backup/backup.routes');
+
 const app = express();
 
 // Middleware
@@ -25,6 +31,12 @@ app.use('/api/chats', chatRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/stories', storyRoutes);
+
+// Stage 2: Modular API Routes
+app.use('/api/communities', communityRoutes);
+app.use('/api/channels', channelRoutes);
+app.use('/api/invites', inviteRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

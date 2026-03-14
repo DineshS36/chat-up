@@ -595,6 +595,27 @@ function Chat() {
         }
     };
 
+    // ─── Export Chat ───
+    const handleExportChat = async (format = 'json') => {
+        try {
+            if (!selectedChatId) return;
+            const res = await API.get(`/backup/${selectedChatId}?format=${format}`, {
+                responseType: 'blob' // Essential for forcing download logic
+            });
+
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `chat-backup-${selectedChatId}.${format}`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            console.error('Failed to export chat:', err);
+            alert('Failed to export chat. Ensure backend modular routes are functioning.');
+        }
+    };
+
     // ─── Typing emit ───
     const handleInputChange = (e) => {
         const value = e.target.value;
@@ -1348,6 +1369,22 @@ function Chat() {
                                 >
                                     🔍
                                 </button>
+                                {/* Export Backup Dropdown Trigger (Basic implementation as 2 buttons for simplicity without breaking logic) */}
+                                <button
+                                    onClick={() => handleExportChat('txt')}
+                                    style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
+                                    title="Export TXT"
+                                >
+                                    TXT
+                                </button>
+                                <button
+                                    onClick={() => handleExportChat('json')}
+                                    style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
+                                    title="Export JSON"
+                                >
+                                    JSON
+                                </button>
+
                                 {!selectedChat?.isGroupChat && (
                                     <>
                                         <button

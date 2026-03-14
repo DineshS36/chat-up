@@ -259,6 +259,61 @@ const chatSocket = async (io) => {
             }
         });
 
+        // ─── COMMUNITY & CHANNEL SOCKET DOMAINS ──────────────────
+
+        // ─── join_community
+        socket.on('join_community', (communityId) => {
+            socket.join(`community_${communityId}`);
+            console.log(`Socket ${socket.id} joined community: ${communityId}`);
+        });
+
+        // ─── leave_community
+        socket.on('leave_community', (communityId) => {
+            socket.leave(`community_${communityId}`);
+            console.log(`Socket ${socket.id} left community: ${communityId}`);
+        });
+
+        // ─── community_update
+        socket.on('community_update', ({ communityId, updateData }) => {
+            // Broadcasts metadata changes (name, avatar, roles)
+            socket.to(`community_${communityId}`).emit('community_update', updateData);
+        });
+
+        // ─── join_channel
+        socket.on('join_channel', (channelId) => {
+            socket.join(`channel_${channelId}`);
+            console.log(`Socket ${socket.id} joined channel: ${channelId}`);
+        });
+
+        // ─── leave_channel
+        socket.on('leave_channel', (channelId) => {
+            socket.leave(`channel_${channelId}`);
+            console.log(`Socket ${socket.id} left channel: ${channelId}`);
+        });
+
+        // ─── send_channel_message
+        socket.on('send_channel_message', async (data) => {
+            try {
+                const { channelId, senderId, content } = data;
+                if (!channelId || !senderId || !content) return;
+
+                // Fire event strictly to channel participants
+                io.to(`channel_${channelId}`).emit('channel_message', {
+                    _id: Date.now().toString(), // Mocked fast DB ID
+                    channelId,
+                    senderId,
+                    content,
+                    createdAt: new Date()
+                });
+
+                // Ideally we'd persist this using a modular ChannelMessage DB model,
+                // but for Stage 2, transient broadcast shows proof of concept.
+                console.log(`Broadcasted channel message in ${channelId} from ${senderId}`);
+            } catch (err) {
+                console.error("Error sending channel message:", err);
+            }
+        });
+
         // ─── disconnect ──────────────────────────────────────────
         // Automatically fired when a client disconnects
         // Removes the userId from the online map
