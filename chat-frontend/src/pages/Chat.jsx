@@ -1268,9 +1268,9 @@ function Chat() {
                     opacity: 1 !important;
                 }
             `}</style>
-            <div className="chat-container" style={styles.container}>
+            <div className="chat-container">
                 {/* ─── Sidebar ─── */}
-                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar}>
+                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`}>
                     <div style={styles.sidebarHeader}>
                         <h2 style={styles.sidebarTitle}>💬 Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1294,7 +1294,7 @@ function Chat() {
                         </div>
                     </div>
 
-                    <div style={styles.chatList}>
+                    <div className="chat-list-scrollable">
                         {loading ? (
                             <p style={styles.placeholder}>Loading chats...</p>
                         ) : error ? (
@@ -1340,11 +1340,11 @@ function Chat() {
                 </div>
 
                 {/* ─── Main Area ─── */}
-                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main}>
+                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`}>
                     {selectedChat ? (
                         <>
                             {/* Chat Header */}
-                            <div style={styles.chatHeader}>
+                            <div className="chat-header">
                                 <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)}>←</button>
                                 <div style={styles.avatar}>{getInitial(selectedChat)}</div>
                                 <div style={{ flex: 1 }}>
@@ -1472,7 +1472,7 @@ function Chat() {
                             )}
 
                             {/* Messages Area */}
-                            <div className="chat-messages-area" style={styles.messagesArea}>
+                            <div className="chat-messages-area">
                                 {loadingMessages ? (
                                     <p style={styles.mainPlaceholder}>Loading messages...</p>
                                 ) : messages.length === 0 ? (
@@ -1810,7 +1810,7 @@ function Chat() {
                                         ))}
                                     </div>
                                 )}
-                                <div className="chat-input-inner" style={styles.inputBar}>
+                                <div className="chat-input-bar">
                                     {isRecording ? (
                                         <div style={styles.recordingBanner}>
                                             <div style={styles.recordingIndicator}></div>
@@ -1833,11 +1833,11 @@ function Chat() {
                                                 📎
                                             </button>
                                             <input
+                                                className="chat-input-field"
                                                 value={messageText}
                                                 onChange={handleInputChange}
                                                 onKeyDown={handleKeyDown}
                                                 placeholder="Type a message..."
-                                                style={styles.messageInput}
                                                 autoFocus={!!editingMessageId}
                                             />
                                         </>
