@@ -1268,9 +1268,9 @@ function Chat() {
                     opacity: 1 !important;
                 }
             `}</style>
-            <div className="chat-container">
+            <div className="chat-container" style={styles.container}>
                 {/* ─── Sidebar ─── */}
-                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`}>
+                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar}>
                     <div style={styles.sidebarHeader}>
                         <h2 style={styles.sidebarTitle}>💬 Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1340,11 +1340,11 @@ function Chat() {
                 </div>
 
                 {/* ─── Main Area ─── */}
-                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`}>
+                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main}>
                     {selectedChat ? (
                         <>
                             {/* Chat Header */}
-                            <div className="chat-header">
+                            <div className="chat-header" style={styles.chatHeader}>
                                 <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)}>←</button>
                                 <div style={styles.avatar}>{getInitial(selectedChat)}</div>
                                 <div style={{ flex: 1 }}>
@@ -1472,7 +1472,7 @@ function Chat() {
                             )}
 
                             {/* Messages Area */}
-                            <div className="chat-messages-area">
+                            <div className="chat-messages-area" style={styles.messagesArea}>
                                 {loadingMessages ? (
                                     <p style={styles.mainPlaceholder}>Loading messages...</p>
                                 ) : messages.length === 0 ? (
@@ -1810,7 +1810,7 @@ function Chat() {
                                         ))}
                                     </div>
                                 )}
-                                <div className="chat-input-bar">
+                                <div className="chat-input-bar" style={styles.inputBar}>
                                     {isRecording ? (
                                         <div style={styles.recordingBanner}>
                                             <div style={styles.recordingIndicator}></div>
