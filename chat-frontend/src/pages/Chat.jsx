@@ -1268,9 +1268,9 @@ function Chat() {
                     opacity: 1 !important;
                 }
             `}</style>
-            <div style={styles.container}>
+            <div className="chat-container" style={styles.container}>
                 {/* ─── Sidebar ─── */}
-                <div style={styles.sidebar}>
+                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar}>
                     <div style={styles.sidebarHeader}>
                         <h2 style={styles.sidebarTitle}>💬 Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1340,11 +1340,12 @@ function Chat() {
                 </div>
 
                 {/* ─── Main Area ─── */}
-                <div style={styles.main}>
+                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main}>
                     {selectedChat ? (
                         <>
                             {/* Chat Header */}
                             <div style={styles.chatHeader}>
+                                <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)}>←</button>
                                 <div style={styles.avatar}>{getInitial(selectedChat)}</div>
                                 <div style={{ flex: 1 }}>
                                     <h3 style={styles.chatHeaderName}>
@@ -1471,7 +1472,7 @@ function Chat() {
                             )}
 
                             {/* Messages Area */}
-                            <div style={styles.messagesArea}>
+                            <div className="chat-messages-area" style={styles.messagesArea}>
                                 {loadingMessages ? (
                                     <p style={styles.mainPlaceholder}>Loading messages...</p>
                                 ) : messages.length === 0 ? (
@@ -1809,7 +1810,7 @@ function Chat() {
                                         ))}
                                     </div>
                                 )}
-                                <div style={styles.inputBar}>
+                                <div className="chat-input-inner" style={styles.inputBar}>
                                     {isRecording ? (
                                         <div style={styles.recordingBanner}>
                                             <div style={styles.recordingIndicator}></div>

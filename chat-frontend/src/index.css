@@ -66,3 +66,63 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Responsive Chat Layout Improvements */
+
+/* Base hide for the mobile back button on desktop */
+.mobile-back-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  margin-right: 12px;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+@media (max-width: 768px) {
+  /* Prevent horizontal scroll */
+  body, html {
+    overflow-x: hidden;
+  }
+
+  .chat-container {
+    flex-direction: column !important;
+  }
+
+  /* Make sidebar take full screen when visible */
+  .chat-sidebar {
+    width: 100% !important;
+    min-width: 100% !important;
+    border-right: none !important;
+    height: 100dvh !important;
+  }
+
+  /* Same for the main chat area */
+  .chat-main {
+    width: 100% !important;
+    height: 100dvh !important;
+  }
+
+  /* Toggle visibility based on selected chat state */
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  /* Show back button on mobile */
+  .mobile-back-btn {
+    display: flex !important;
+    align-items: center;
+  }
+
+  /* Fix chat padding & input sizes for mobile screens */
+  .chat-messages-area {
+    padding: 12px 16px !important;
+  }
+
+  .chat-input-inner {
+    padding: 12px 16px !important;
+    gap: 8px !important;
+  }
+}
