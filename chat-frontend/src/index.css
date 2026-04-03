@@ -135,6 +135,42 @@ body, html, #root {
 }
 
 /* =========================================
+   3b. MESSAGE ROW LAYOUT
+   ========================================= */
+
+/* Own messages: actions on the LEFT of the bubble */
+.msg-own .msg-actions {
+  order: -1;
+  margin-right: 6px;
+  margin-left: 0;
+}
+
+/* Other messages: actions on the RIGHT of the bubble */
+.msg-other .msg-actions {
+  order: 1;
+  margin-left: 6px;
+  margin-right: 0;
+}
+
+/* Hover reveal for message actions */
+.msg-row:hover .msg-actions {
+  opacity: 1 !important;
+}
+
+/* Action button hover */
+.msg-actions button:hover {
+  background: rgba(255,255,255,0.12) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+  transform: scale(1.05);
+  transition: all 0.12s ease;
+}
+
+/* Message bubble hover subtle effect */
+.msg-row:hover > div:last-of-type > div:first-child {
+  filter: brightness(1.05);
+}
+
+/* =========================================
    4. CHAT INPUT FIELD
    ========================================= */
 .chat-input-field {

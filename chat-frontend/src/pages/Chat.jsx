@@ -1534,7 +1534,7 @@ function Chat() {
                                             <div
                                                 key={msg._id}
                                                 ref={(el) => { messageRefs.current[msg._id] = el; }}
-                                                className="msg-row"
+                                                className={`msg-row ${isOwn ? 'msg-own' : 'msg-other'}`}
                                                 onClick={(e) => {
                                                     if (e.ctrlKey || e.metaKey) {
                                                         e.preventDefault();
@@ -1544,7 +1544,7 @@ function Chat() {
                                                 style={{
                                                     ...styles.messageRow,
                                                     justifyContent: isOwn ? "flex-end" : "flex-start",
-                                                    ...(isGrouped ? { marginBottom: "1px" } : {}),
+                                                    marginBottom: isGrouped ? "2px" : "10px",
                                                     ...(selectedMessages.includes(msg._id) ? styles.selectedRow : {}),
                                                 }}
                                             >
@@ -2411,7 +2411,6 @@ const styles = {
         padding: "20px 24px",
         display: "flex",
         flexDirection: "column",
-        gap: "6px",
         minHeight: 0,
         scrollBehavior: "smooth",
     },
@@ -2424,18 +2423,18 @@ const styles = {
     messageRow: {
         display: "flex",
         width: "100%",
-        alignItems: "center",
-        marginBottom: "4px",
+        alignItems: "flex-end",
+        position: "relative",
     },
     messageContainer: {
         display: "flex",
         flexDirection: "column",
         maxWidth: "70%",
-        marginBottom: "2px",
+        minWidth: 0,
     },
     messageBubble: {
-        padding: "10px 16px",
-        borderRadius: "16px",
+        padding: "10px 14px 8px",
+        borderRadius: "18px",
         position: "relative",
     },
     ownBubble: {
@@ -2448,18 +2447,21 @@ const styles = {
     },
     messageContent: {
         margin: 0,
-        fontSize: "14px",
-        lineHeight: "1.5",
+        fontSize: "14.5px",
+        lineHeight: "1.45",
         wordBreak: "break-word",
+        overflowWrap: "break-word",
     },
     messageTime: {
-        fontSize: "10px",
+        fontSize: "10.5px",
         color: "rgba(255,255,255,0.4)",
-        marginTop: "4px",
+        marginTop: "2px",
         display: "flex",
         alignItems: "center",
         justifyContent: "flex-end",
-        gap: "4px",
+        gap: "3px",
+        lineHeight: 1,
+        userSelect: "none",
     },
     tickSent: {
         fontSize: "12px",
@@ -2480,34 +2482,30 @@ const styles = {
         display: "flex",
         justifyContent: "flex-end",
         alignItems: "center",
-        gap: "8px",
-        marginTop: "4px",
+        gap: "6px",
+        marginTop: "2px",
     },
     messageActions: {
         display: "flex",
-        gap: "4px",
+        gap: "2px",
         opacity: 0,
-        transition: "opacity 0.2s",
+        transition: "opacity 0.15s",
         alignItems: "center",
-        marginRight: "8px",
         flexShrink: 0,
     },
-    // Adding a hover effect for messageRow to show actions
-    // Note: Inline styles don't support pseudo-classes easily, so we might need css for the hover
-    // We'll instead use opacity 1 for the actions so they are visible, or we can use a class.
-    // For now, making actions always slightly visible or relying on global CSS.
     actionBtn: {
-        background: "rgba(0,0,0,0.85)",
-        border: "1px solid #000",
-        color: "#fff",
+        background: "rgba(15, 12, 41, 0.9)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        color: "rgba(255,255,255,0.8)",
         cursor: "pointer",
         fontSize: "12px",
         padding: "4px 6px",
-        borderRadius: "6px",
+        borderRadius: "8px",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontWeight: "bold",
+        backdropFilter: "blur(8px)",
     },
     deletedBubble: {
         background: "rgba(255,255,255,0.04)",
