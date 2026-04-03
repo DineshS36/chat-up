@@ -2194,6 +2194,7 @@ const styles = {
         borderRight: "1px solid rgba(255,255,255,0.08)",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
     },
     sidebarHeader: {
         display: "flex",
@@ -2339,6 +2340,7 @@ const styles = {
         padding: "16px 24px",
         borderBottom: "1px solid rgba(255,255,255,0.08)",
         background: "rgba(255,255,255,0.03)",
+        flexShrink: 0,
     },
     chatHeaderName: {
         margin: 0,
@@ -2410,6 +2412,8 @@ const styles = {
         display: "flex",
         flexDirection: "column",
         gap: "6px",
+        minHeight: 0,
+        scrollBehavior: "smooth",
     },
     emptyMessages: {
         flex: 1,
@@ -2426,7 +2430,7 @@ const styles = {
     messageContainer: {
         display: "flex",
         flexDirection: "column",
-        maxWidth: "65%",
+        maxWidth: "70%",
         marginBottom: "2px",
     },
     messageBubble: {
@@ -2656,6 +2660,7 @@ const styles = {
         padding: "16px 24px",
         borderTop: "1px solid rgba(255,255,255,0.08)",
         background: "rgba(255,255,255,0.03)",
+        flexShrink: 0,
     },
     messageInput: {
         flex: 1,
@@ -2882,7 +2887,8 @@ const styles = {
     audioPlayer: {
         height: "36px",
         outline: "none",
-        minWidth: "220px",
+        minWidth: "180px",
+        maxWidth: "100%",
     },
     micBtn: {
         background: "transparent",

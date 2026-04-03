@@ -1,5 +1,10 @@
+/* =========================================
+   Google Fonts: Inter
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -25,7 +30,6 @@ a:hover {
 body {
   margin: 0;
   display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
 }
@@ -71,10 +75,10 @@ button:focus-visible {
    1. GLOBAL FIXES (All Screens)
    ========================================= */
 body, html, #root {
-  overflow-x: hidden; /* Fixes horizontal scroll breaks */
+  overflow-x: hidden;
   width: 100%;
   max-width: 100vw;
-  height: 100dvh; /* dynamic view height fixes mobile notch/URL bar bugs */
+  height: 100dvh;
 }
 
 .chat-container {
@@ -82,18 +86,88 @@ body, html, #root {
   width: 100% !important;
   height: 100dvh !important;
   overflow: hidden !important;
-  flex-direction: row !important; /* Default split left/right */
+  flex-direction: row !important;
 }
 
 /* =========================================
-   2. MOBILE BREAKPOINT (< 768px)
+   2. CUSTOM SCROLLBARS
+   ========================================= */
+.chat-list-scrollable,
+.chat-messages-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+
+.chat-list-scrollable::-webkit-scrollbar,
+.chat-messages-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-list-scrollable::-webkit-scrollbar-track,
+.chat-messages-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-list-scrollable::-webkit-scrollbar-thumb,
+.chat-messages-area::-webkit-scrollbar-thumb {
+  background-color: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+
+.chat-list-scrollable::-webkit-scrollbar-thumb:hover,
+.chat-messages-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255,255,255,0.2);
+}
+
+/* =========================================
+   3. SIDEBAR CHAT LIST
+   ========================================= */
+.chat-list-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  min-height: 0; /* essential for flex scroll */
+}
+
+/* Chat item hover (inline styles don't support :hover) */
+.chat-list-scrollable > div:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+/* =========================================
+   4. CHAT INPUT FIELD
+   ========================================= */
+.chat-input-field {
+  flex: 1;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  min-width: 0; /* prevent flex overflow */
+}
+
+.chat-input-field::placeholder {
+  color: rgba(255,255,255,0.35);
+}
+
+.chat-input-field:focus {
+  border-color: rgba(102, 126, 234, 0.5);
+  background: rgba(255,255,255,0.09);
+}
+
+/* =========================================
+   5. MOBILE BREAKPOINT (< 768px)
    ========================================= */
 @media screen and (max-width: 767px) {
   .chat-container {
-    flex-direction: column !important; /* Forces vertical stacking */
+    flex-direction: column !important;
   }
 
-  /* Make both elements take exactly 100% of the screen */
   .chat-sidebar, .chat-main {
     width: 100% !important;
     min-width: 100% !important;
@@ -101,12 +175,12 @@ body, html, #root {
     border-right: none !important;
   }
 
-  /* The magic toggle class that switches views */
-  .mobile-hide {
+  /* Mobile toggle: hide inactive panel */
+  .mobile-hide,
+  .mobile-hidden {
     display: none !important;
   }
 
-  /* Show the back button so user can return to the Sidebar */
   .mobile-back-btn {
     display: block !important;
     background: none;
@@ -117,38 +191,40 @@ body, html, #root {
     cursor: pointer;
   }
 
-  /* Tighten spacing for smaller mobile screens */
   .chat-messages-area {
     padding: 12px 14px !important;
   }
-  
+
   .chat-input-bar {
     padding: 10px 14px calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .chat-input-field {
+    padding: 12px 14px;
+    font-size: 16px; /* prevents iOS zoom on focus */
   }
 }
 
 /* =========================================
-   3. TABLET BREAKPOINT (768px - 1024px)
+   6. TABLET BREAKPOINT (768px - 1024px)
    ========================================= */
 @media screen and (min-width: 768px) and (max-width: 1024px) {
-  /* Slightly narrower sidebar to allow more breathing room for the chat */
   .chat-sidebar {
     width: 280px !important;
     min-width: 280px !important;
   }
-  
+
   .chat-main {
     width: calc(100% - 280px) !important;
   }
 
-  /* Ensure back button stays hidden on split screens */
   .mobile-back-btn {
     display: none !important;
   }
 }
 
 /* =========================================
-   4. DESKTOP BREAKPOINT (> 1024px)
+   7. DESKTOP BREAKPOINT (> 1024px)
    ========================================= */
 @media screen and (min-width: 1025px) {
   .mobile-back-btn {
