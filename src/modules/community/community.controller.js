@@ -1,53 +1,67 @@
 const communityService = require('./community.service');
 
-exports.createCommunity = async (req, res) => {
-    try {
-        const { name, description, avatar } = req.body;
+// @desc    Create a new community
+// @route   POST /api/communities
+// @access  Private
+exports.createCommunity = async (req, res, next) => {
+  try {
+    const { name, description, avatar, isPrivate } = req.body;
 
-        if (!name) {
-            return res.status(400).json({ message: 'Community name is required' });
-        }
-
-        const community = await communityService.createCommunity(req.userId, name, description, avatar);
-        res.status(201).json(community);
-    } catch (error) {
-        console.error('Error creating community:', error);
-        res.status(500).json({ message: 'Server error' });
+    if (!name) {
+      const error = new Error('Community name is required');
+      error.status = 400;
+      throw error;
     }
+
+    const community = await communityService.createCommunity({
+      name,
+      description,
+      avatar,
+      isPrivate,
+      userId: req.userId
+    });
+
+    res.status(201).json({
+      success: true,
+      data: community
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.getUserCommunities = async (req, res) => {
-    try {
-        const communities = await communityService.getUserCommunities(req.userId);
-        res.json(communities);
-    } catch (error) {
-        console.error('Error fetching communities:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
+// @desc    Get all communities for logged-in user
+// @route   GET /api/communities
+// @access  Private
+exports.getCommunities = async (req, res, next) => {
+  try {
+    const communities = await communityService.getUserCommunities(req.userId);
+
+    res.json({
+      success: true,
+      count: communities.length,
+      data: communities
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.getCommunityById = async (req, res) => {
-    try {
-        const community = await communityService.getCommunityById(req.params.id, req.userId);
-        res.json(community);
-    } catch (error) {
-        if (error.message.includes('not found')) {
-            return res.status(404).json({ message: error.message });
-        }
-        console.error('Error fetching community details:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-};
+// @desc    Get a single community
+// @route   GET /api/communities/:id
+// @access  Private
+exports.getCommunity = async (req, res, next) => {
+  try {
+    const community = await communityService.getCommunityById(
+      req.params.id,
+      req.userId
+    );
 
-exports.deleteCommunity = async (req, res) => {
-    try {
-        await communityService.deleteCommunity(req.params.id, req.userId);
-        res.json({ message: 'Community deleted successfully' });
-    } catch (error) {
-        if (error.message.includes('Only the owner')) {
-            return res.status(403).json({ message: error.message });
-        }
-        console.error('Error deleting community:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
+    res.json({
+      success: true,
+      data: community
+    });
+  } catch (error) {
+    next(error);
+  }
 };

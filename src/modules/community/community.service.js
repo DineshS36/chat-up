@@ -1,70 +1,58 @@
 const Community = require('./community.model');
-const Channel = require('../channel/channel.model');
 
-exports.createCommunity = async (userId, name, description, avatar) => {
-    // 1. Create the community document
-    const community = new Community({
-        name,
-        description,
-        avatar,
-        owner: userId,
-        members: [{
-            user: userId,
-            role: 'Owner'
-        }]
-    });
+/**
+ * Create a new community.
+ * The creator is automatically added as a member with role "owner".
+ */
+exports.createCommunity = async ({ name, description, avatar, isPrivate, userId }) => {
+  const community = await Community.create({
+    name,
+    description,
+    avatar,
+    owner: userId,
+    isPrivate: isPrivate || false,
+    members: [{ user: userId, role: 'owner' }]
+  });
 
-    await community.save();
-
-    // 2. Automatically generate a 'general' text channel
-    const defaultChannel = new Channel({
-        communityId: community._id,
-        name: 'general',
-        type: 'text'
-    });
-
-    await defaultChannel.save();
-
-    // 3. Link default channel to community
-    community.channels.push(defaultChannel._id);
-    await community.save();
-
-    return community.populate('channels');
+  return Community.findById(community._id)
+    .populate('owner', 'name email profilePic')
+    .populate('members.user', 'name email profilePic');
 };
 
+/**
+ * Get all communities the logged-in user is a member of.
+ */
 exports.getUserCommunities = async (userId) => {
-    // Return all communities where the user is listed in members array
-    return await Community.find({ "members.user": userId })
-        .populate('channels')
-        .sort({ createdAt: -1 });
+  return Community.find({ 'members.user': userId })
+    .populate('owner', 'name email profilePic')
+    .populate('members.user', 'name email profilePic')
+    .sort({ createdAt: -1 });
 };
 
+/**
+ * Get a single community by ID.
+ * Throws if not found or user is not a member.
+ */
 exports.getCommunityById = async (communityId, userId) => {
-    // Ensure the requester is actually a member
-    const community = await Community.findOne({
-        _id: communityId,
-        "members.user": userId
-    }).populate('channels')
-        .populate('members.user', 'name email avatar isOnline lastSeen');
+  const community = await Community.findById(communityId)
+    .populate('owner', 'name email profilePic')
+    .populate('members.user', 'name email profilePic');
 
-    if (!community) {
-        throw new Error('Community not found or access denied');
-    }
-    return community;
-};
+  if (!community) {
+    const error = new Error('Community not found');
+    error.status = 404;
+    throw error;
+  }
 
-exports.deleteCommunity = async (communityId, userId) => {
-    const community = await Community.findById(communityId);
-    if (!community) throw new Error('Community not found');
+  const isMember = community.members.some(
+    (m) => m.user._id.toString() === userId
+  );
 
-    if (community.owner.toString() !== userId.toString()) {
-        throw new Error('Only the owner can delete the community');
-    }
+  if (!isMember) {
+    const error = new Error('Not authorized to access this community');
+    error.status = 403;
+    throw error;
+  }
 
-    // Delete associated channels
-    await Channel.deleteMany({ communityId: community._id });
-
-    // Delete the community itself
-    await Community.findByIdAndDelete(communityId);
-    return true;
+  return community;
 };

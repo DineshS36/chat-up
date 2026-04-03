@@ -1,59 +1,50 @@
 const mongoose = require('mongoose');
 
 const communitySchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: true,
-        trim: true,
-        maxlength: 100
+  name: {
+    type: String,
+    required: [true, 'Community name is required'],
+    trim: true,
+    maxlength: [100, 'Name cannot exceed 100 characters']
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Description cannot exceed 500 characters'],
+    default: ''
+  },
+  avatar: {
+    type: String,
+    default: ''
+  },
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  members: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
     },
-    description: {
-        type: String,
-        trim: true,
-        maxlength: 500
-    },
-    avatar: {
-        type: String,
-        default: ""
-    },
-    owner: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
-    },
-    members: [{
-        user: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        },
-        role: {
-            type: String,
-            enum: ['Owner', 'Admin', 'Moderator', 'Member', 'Guest'],
-            default: 'Member'
-        },
-        joinedAt: {
-            type: Date,
-            default: Date.now
-        }
-    }],
-    channels: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Channel'
-    }],
-    inviteLinks: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Invite'
-    }],
-    createdAt: {
-        type: Date,
-        default: Date.now
+    role: {
+      type: String,
+      enum: ['owner', 'admin', 'moderator', 'member'],
+      default: 'member'
     }
+  }],
+  isPrivate: {
+    type: Boolean,
+    default: false
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
-// Create compound index to enforce unique members within a community
-communitySchema.index({ "members.user": 1, _id: 1 });
+// Fast lookup: find communities a user belongs to
+communitySchema.index({ 'members.user': 1 });
 
-const Community = mongoose.model('Community', communitySchema);
-
-module.exports = Community;
+module.exports = mongoose.model('Community', communitySchema);

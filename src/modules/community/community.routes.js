@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const protect = require('../../middleware/auth');
 const communityController = require('./community.controller');
-const authMiddleware = require('../../middleware/auth'); // Reusing existing JWT logic
 
-// All community routes require authentication
-router.use(authMiddleware);
+router.use(protect); // All community routes require authentication
 
 router.post('/', communityController.createCommunity);
-router.get('/', communityController.getUserCommunities);
-router.get('/:id', communityController.getCommunityById);
-router.delete('/:id', communityController.deleteCommunity);
+router.get('/', communityController.getCommunities);
+router.get('/:id', communityController.getCommunity);
 
 module.exports = router;
