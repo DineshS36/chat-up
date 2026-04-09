@@ -1256,13 +1256,17 @@ function Chat() {
         <>
             <style>{`
                 @keyframes blink {
-                    0% { opacity: 0.2; }
-                    20% { opacity: 1; }
-                    100% { opacity: 0.2; }
+                    0% { opacity: 0.3; transform: scale(0.8); }
+                    50% { opacity: 1; transform: scale(1.1); }
+                    100% { opacity: 0.3; transform: scale(0.8); }
                 }
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(4px); }
+                @keyframes messageAppear {
+                    from { opacity: 0; transform: translateY(6px); }
                     to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes popIn {
+                    0% { opacity: 0; transform: scale(0.8); }
+                    100% { opacity: 1; transform: scale(1); }
                 }
                 @keyframes pulse {
                     0%, 100% { opacity: 1; }
@@ -2367,8 +2371,8 @@ const styles = {
     },
     dot: {
         display: "inline-block",
-        animation: "blink 1.4s infinite both",
-        fontSize: "16px",
+        animation: "blink 1.2s infinite ease-in-out both",
+        fontSize: "18px",
         lineHeight: 1,
     },
     mainContent: {
@@ -2607,6 +2611,7 @@ const styles = {
         color: "rgba(255,255,255,0.65)",
         transition: "all 0.15s ease",
         lineHeight: 1.4,
+        animation: "popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
     },
     reactionChipActive: {
         background: "rgba(102, 126, 234, 0.25)",
@@ -2712,7 +2717,7 @@ const styles = {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        transition: "opacity 0.15s",
+        transition: "opacity 0.15s, transform 0.1s",
         flexShrink: 0,
     },
 
