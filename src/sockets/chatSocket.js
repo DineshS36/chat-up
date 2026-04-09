@@ -74,7 +74,20 @@ const chatSocket = async (io) => {
                 // Auto stop typing when message is sent
                 socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
 
-                console.log(`Message saved: ${message._id} (${senderId} → ${receiverId}) in chat ${chatId}`);
+                const messagePayload = {
+                    _id: message._id,
+                    chatId: message.chatId,
+                    senderId: message.senderId,
+                    receiverId: message.receiverId,
+                    content: message.content,
+                    type: message.type,
+                    status: message.status,
+                    createdAt: message.createdAt,
+                    replyTo: message.replyTo,
+                    mentions: message.mentions,
+                };
+
+                console.log(`[Socket] Message saved: ${message._id} (${senderId} → ${receiverId}) in chat ${chatId}`);
 
                 // Emit mention notifications
                 if (mentionIds.length > 0) {
@@ -93,41 +106,26 @@ const chatSocket = async (io) => {
                     });
                 }
 
-                // Check if receiver is online
-                const receiverSocketId = onlineUsers.get(receiverId);
+                // 1. Confirm to sender — so they can replace their optimistic temp message
+                socket.emit('message_sent', messagePayload);
 
+                // 2. Broadcast to all OTHER participants in the chat room
+                socket.to(chatId).emit('receive_message', messagePayload);
+
+                // 3. If receiver is online, mark as delivered and notify sender
+                const receiverSocketId = onlineUsers.get(receiverId);
                 if (receiverSocketId) {
-                    // Mark as delivered since receiver is online
                     await Message.findByIdAndUpdate(message._id, { status: 'delivered' });
 
-                    // Emit to the receiver's socket
-                    io.to(receiverSocketId).emit('receive_message', {
-                        _id: message._id,
-                        chatId: message.chatId,
-                        senderId: message.senderId,
-                        receiverId: message.receiverId,
-                        content: message.content,
-                        type: message.type,
-                        status: 'delivered',
-                        createdAt: message.createdAt,
-                        replyTo: message.replyTo,
-                        mentions: message.mentions,
-                    });
+                    // Notify sender that message was delivered (tick update)
+                    socket.emit('message_delivered', { messageId: message._id });
 
-                    // Notify sender that message was delivered
-                    const senderSocketId = onlineUsers.get(senderId);
-                    if (senderSocketId) {
-                        io.to(senderSocketId).emit('message_delivered', {
-                            messageId: message._id,
-                        });
-                    }
-
-                    console.log(`Message delivered to online user: ${receiverId}`);
+                    console.log(`[Socket] Message delivered to online user: ${receiverId}`);
                 } else {
-                    console.log(`User ${receiverId} is offline. Message stored for later.`);
+                    console.log(`[Socket] User ${receiverId} is offline. Message stored for later.`);
                 }
             } catch (error) {
-                console.error('Error sending message:', error.message);
+                console.error('[Socket] Error sending message:', error.message);
                 socket.emit('error', { message: error.message });
             }
         });

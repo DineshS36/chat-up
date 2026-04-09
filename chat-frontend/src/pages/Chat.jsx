@@ -200,6 +200,28 @@ function Chat() {
             fetchChats();
         };
 
+        // Handle sender's own message confirmation — replace optimistic temp message
+        const handleMessageSent = (message) => {
+            const decryptedMessage = decryptMessageObj(message);
+            setMessages((prev) => {
+                // Find the optimistic temp message (has Date.now() ID, same chatId)
+                const tempIdx = prev.findIndex(
+                    (m) =>
+                        m.chatId === decryptedMessage.chatId &&
+                        m.senderId === user._id &&
+                        !m._id.match(/^[0-9a-f]{24}$/) // temp IDs are not valid ObjectIds
+                );
+                if (tempIdx !== -1) {
+                    const updated = [...prev];
+                    updated[tempIdx] = decryptedMessage;
+                    return updated;
+                }
+                // Fallback: just add if no temp found (shouldn't happen)
+                return [...prev, decryptedMessage];
+            });
+            fetchChats();
+        };
+
         const handleDelivered = ({ messageId }) => {
             setMessages((prev) =>
                 prev.map((msg) =>
@@ -271,6 +293,7 @@ function Chat() {
         };
 
         socket.on("receive_message", handleReceive);
+        socket.on("message_sent", handleMessageSent);
         socket.on("message_delivered", handleDelivered);
         socket.on("messages_read", handleRead);
         socket.on("user_typing", handleUserTyping);
@@ -358,6 +381,7 @@ function Chat() {
 
         return () => {
             socket.off("receive_message", handleReceive);
+            socket.off("message_sent", handleMessageSent);
             socket.off("message_delivered", handleDelivered);
             socket.off("messages_read", handleRead);
             socket.off("user_typing", handleUserTyping);
