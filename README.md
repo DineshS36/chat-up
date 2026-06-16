@@ -1,41 +1,69 @@
-# 💬 ChatUp | High-Concurrency Real-Time Messaging
+# 💬 ChatUp | Real-Time Messaging Platform
 
-A full-stack, low-latency chat application engineered for rapid message delivery and high concurrent user loads. 
+A full-stack, real-time chat application designed for low-latency message delivery, online presence tracking, and background job processing.
 
-## 🚀 System Architecture & Performance
+## 🚀 System Architecture & Flow
 
-This application was explicitly designed to handle heavy WebSocket traffic while maintaining strict database persistence without bottlenecking the main thread.
+This application is architected to handle real-time WebSocket traffic alongside persistent database storage, utilizing background workers for deferred tasks to keep the event loop unblocked.
 
-* **High Concurrency Limit:** Built on a Node.js and Socket.io foundation utilizing highly optimized in-memory `Map` data structures for session management. A single Node instance is tuned to sustain **10,000 to 30,000 concurrent user connections** within standard cloud memory constraints.
-* **Low-Latency Processing:** Achieved a highly reliable server-side message processing latency of **15 to 40 milliseconds**. 
-* **Strict Data Integrity:** Real-time message emissions prioritize absolute reliability over blind speed. Socket.io broadcasting is securely synchronized with synchronous MongoDB database insertions and delivery status updates, ensuring zero message drops during transit.
-* **Scalability Roadmap:** The current session state is bound to a single machine's memory. To overcome the single-thread CPU limitations of the Node.js event loop, the architecture is designed with a clear migration path toward horizontal scaling across distributed servers utilizing a Redis Adapter (`socket.io-redis`) and Node clustering.
+* **Real-Time Engine:** Built on Node.js and Socket.io, utilizing in-memory structures for active session and socket mapping. Handshakes are authenticated using JWTs, mapping users to distinct socket rooms.
+* **Database & Persistence:** Utilizes MongoDB (via Mongoose) as the primary data store for chats, messages, and unread counts. Real-time message events are saved to the database to ensure strict data integrity before delivery confirmations are dispatched.
+* **Background Job Queue (BullMQ + Redis):** Implements **BullMQ** backed by **Redis** (via `ioredis`) to manage scheduled message queues. When a message is scheduled for future delivery, it is queued as a delayed job in Redis. A background worker processes the job when its timer expires and broadcasts it to the chat.
+* **Fault Tolerance:** The backend is configured to handle Redis offline status gracefully in local development environments. It attempts to connect to Redis up to 3 times on boot, and falls back to running the rest of the application (Express server & Socket.io) if Redis is unavailable.
+* **Scale-Out Strategy:** Currently running as a single-node setup. To scale horizontally, the system is designed to migrate toward using the Socket.io Redis adapter (`@socket.io/redis-adapter`) to sync states across multiple node clusters.
 
 ## 💻 Tech Stack
 
-* **Frontend:** React.js, Tailwind CSS
-* **Backend:** Node.js, Express.js
-* **Real-Time Engine:** Socket.io
-* **Database:** MongoDB
+### Backend
+* **Runtime:** Node.js
+* **Framework:** Express.js
+* **Database:** MongoDB (Mongoose)
+* **Caching & Queue:** Redis / BullMQ
+* **Real-time:** Socket.io
+
+### Frontend
+* **Framework:** React.js (Vite)
+* **Styling:** CSS
+* **HTTP Client:** Axios
+* **Real-time:** Socket.io-client
 
 ## ⚙️ Local Setup Instructions
 
 1. **Clone the repository:**
-   \`\`\`bash
+   ```bash
    git clone https://github.com/DineshS36/chatup.git
-   \`\`\`
+   cd chatup
+   ```
 
-2. **Setup the Backend:**
-   \`\`\`bash
-   cd backend
-   npm install
-   # Create a .env file and add your MongoDB connection URI and server PORT
-   npm start
-   \`\`\`
+2. **Setup the Backend (Root Directory):**
+   * Install dependencies:
+     ```bash
+     npm install
+     ```
+   * Create a `.env` file at the root:
+     ```env
+     PORT=5000
+     MONGODB_URI=mongodb+srv://<username>:<password>@yourcluster.mongodb.net/dbname
+     JWT_SECRET=your_jwt_secret_key
+     CLIENT_URL=http://localhost:5173
+     # Provide a local Redis URL or a cloud Redis URL (e.g., Upstash with rediss:// for TLS)
+     REDIS_URL=rediss://default:password@your-upstash-endpoint.upstash.io:6379
+     ```
+   * Start the development server (uses `nodemon`):
+     ```bash
+     npm run dev
+     ```
 
 3. **Setup the Frontend:**
-   \`\`\`bash
-   cd ../frontend
-   npm install
-   npm run dev
-   \`\`\`
+   * Navigate to the frontend directory:
+     ```bash
+     cd chat-frontend
+     ```
+   * Install dependencies:
+     ```bash
+     npm install
+     ```
+   * Start the React development server:
+     ```bash
+     npm run dev
+     ```
