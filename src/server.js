@@ -1,5 +1,6 @@
 // Load environment variables first (before any other imports)
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const http = require('http');
 const { Server } = require('socket.io');
