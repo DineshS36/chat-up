@@ -101,6 +101,14 @@ const startMessageWorker = (io) => {
     console.error(`[Worker] Job ${job?.id} failed: ${err.message}`);
   });
 
+  let hasLoggedError = false;
+  worker.on('error', (err) => {
+    if (!hasLoggedError) {
+      console.error(`[BullMQ] Worker error: ${err.message} - Scheduled messages unavailable.`);
+      hasLoggedError = true;
+    }
+  });
+
   console.log('[BullMQ] scheduledMessages worker started');
 
   return worker;

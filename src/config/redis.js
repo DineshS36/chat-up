@@ -10,10 +10,26 @@ const createRedisConnection = () => {
   const connection = new Redis(url, {
     maxRetriesPerRequest: null, // Required by BullMQ
     enableReadyCheck: false,
+    retryStrategy(times) {
+      if (times > 3) {
+        console.warn('[Redis] Connection failed after 3 attempts. Scheduled messages will be unavailable.');
+        return null; // Stop retrying
+      }
+      return 1000; // Retry every 1s
+    }
   });
 
-  connection.on('connect', () => console.log('[Redis] Connected'));
-  connection.on('error', (err) => console.error('[Redis] Error:', err.message));
+  connection.on('connect', () => {
+    console.log('[Redis] Connected');
+    connection.__hasLoggedError = false;
+  });
+  
+  connection.on('error', (err) => {
+    if (!connection.__hasLoggedError) {
+      console.error('[Redis] Error:', err.message, '- Retrying...');
+      connection.__hasLoggedError = true;
+    }
+  });
 
   return connection;
 };

@@ -15,6 +15,14 @@ const messageQueue = new Queue('scheduledMessages', {
   },
 });
 
+let hasLoggedQueueError = false;
+messageQueue.on('error', (err) => {
+  if (!hasLoggedQueueError) {
+    console.error(`[BullMQ] Queue error: ${err.message} - Scheduled messages unavailable.`);
+    hasLoggedQueueError = true;
+  }
+});
+
 console.log('[BullMQ] scheduledMessages queue ready');
 
 module.exports = messageQueue;
