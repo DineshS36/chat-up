@@ -3,42 +3,13 @@ import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import UserList from "../components/UserList";
 import socket from "../socket/socket";
-import CryptoJS from "crypto-js";
-
-const SECRET_KEY = "chatup-e2e-secret-key";
-
-const encryptText = (text) => {
-    if (!text) return text;
-    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
-};
-
-const decryptText = (encryptedData) => {
-    if (!encryptedData) return encryptedData;
-    try {
-        const bytes = CryptoJS.AES.decrypt(encryptedData, SECRET_KEY);
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-        return decrypted || encryptedData;
-    } catch (e) {
-        return encryptedData;
-    }
-};
-
-const decryptMessageObj = (msg) => {
-    if (!msg) return msg;
-    const decrypted = { ...msg };
-    if (decrypted.type === "text") {
-        decrypted.content = decryptText(decrypted.content);
-    }
-    if (decrypted.replyTo && decrypted.replyTo.content) {
-        decrypted.replyTo = {
-            ...decrypted.replyTo,
-            content: decryptText(decrypted.replyTo.content)
-        };
-    }
-    return decrypted;
-};
+import { encryptText, decryptMessageObj } from "../utils/encryption";
+import { formatDuration, formatLastSeen, formatTime, formatMessageTime } from "../utils/dateUtils";
+import { getChatName, getInitial } from "../utils/chatUtils";
 
 function Chat() {
+    const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
     const [chats, setChats] = useState([]);
     const [selectedChatId, setSelectedChatId] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -873,12 +844,37 @@ function Chat() {
         setMessageToDelete(null);
     };
 
-    const handleReaction = async (msgId, emoji) => {
+    const handleReaction = async (messageId, emoji) => {
+        // Optimistic UI Update
+        setMessages((prev) =>
+            prev.map((m) => {
+                if (m._id === messageId) {
+                    const reactions = [...(m.reactions || [])];
+                    const existingIdx = reactions.findIndex(r => r.userId === user._id || r.userId?._id === user._id);
+                    if (existingIdx !== -1) {
+                        if (reactions[existingIdx].emoji === emoji) {
+                            reactions.splice(existingIdx, 1);
+                        } else {
+                            reactions[existingIdx].emoji = emoji;
+                        }
+                    } else {
+                        reactions.push({ userId: user._id, emoji });
+                    }
+                    return { ...m, reactions };
+                }
+                return m;
+            })
+        );
+
+        setEmojiPickerMsgId(null);
+
         try {
-            await API.post(`/messages/${msgId}/react`, { emoji });
-            setEmojiPickerMsgId(null);
+            await API.post(`/messages/${messageId}/react`, { emoji });
+            // Removed fetchMessages(selectedChatId) to prevent full reload delay
         } catch (error) {
             console.error("Failed to react", error);
+            // On failure, revert by refetching
+            fetchMessages(selectedChatId);
         }
     };
 
@@ -1045,11 +1041,7 @@ function Chat() {
     };
 
     // ─── Voice Recording Handlers ───
-    const formatDuration = (seconds) => {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}:${s < 10 ? '0' : ''}${s}`;
-    };
+
 
     const startRecording = async () => {
         if (!selectedChatId) return;
@@ -1116,37 +1108,6 @@ function Chat() {
     };
 
     // ─── Helpers ───
-    const getChatName = (chat) => {
-        if (chat.isGroupChat) return chat.name;
-        const other = chat.participants?.find((p) => p._id !== user._id);
-        return other?.name || "Unknown User";
-    };
-
-    const getInitial = (chat) => {
-        if (chat.isGroupChat) return "👥";
-        const name = getChatName(chat);
-        return name ? name.charAt(0).toUpperCase() : "?";
-    };
-
-    const formatLastSeen = (dateStr) => {
-        if (!dateStr) return "";
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now - date;
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return "just now";
-        if (mins < 60) return `${mins}m ago`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h ago`;
-        const days = Math.floor(hours / 24);
-        if (days < 7) return `${days}d ago`;
-
-        return date.toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-        });
-    };
-
     const getOtherUserPresence = (chat) => {
         if (!chat || chat.isGroupChat) return null;
         const other = chat.participants?.find((p) => p._id !== user._id);
@@ -1175,29 +1136,6 @@ function Chat() {
                 Offline
             </span>
         );
-    };
-
-    const formatTime = (dateStr) => {
-        if (!dateStr) return "";
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now - date;
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return "now";
-        if (mins < 60) return `${mins}m`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h`;
-        const days = Math.floor(hours / 24);
-        if (days < 7) return `${days}d`;
-        return date.toLocaleDateString();
-    };
-
-    const formatMessageTime = (dateStr) => {
-        if (!dateStr) return "";
-        return new Date(dateStr).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-        });
     };
 
     // ─── Status ticks ───
@@ -1354,10 +1292,10 @@ function Chat() {
                                             ...(isSelected ? styles.chatItemActive : {}),
                                         }}
                                     >
-                                        <div style={styles.avatar}>{getInitial(chat)}</div>
+                                        <div style={styles.avatar}>{getInitial(chat, user)}</div>
                                         <div style={styles.chatInfo}>
                                             <div style={styles.chatTopRow}>
-                                                <span style={styles.chatName}>{getChatName(chat)}</span>
+                                                <span style={styles.chatName}>{getChatName(chat, user)}</span>
                                                 <span style={styles.chatTime}>
                                                     {formatTime(chat.updatedAt)}
                                                 </span>
@@ -1385,10 +1323,10 @@ function Chat() {
                             {/* Chat Header */}
                             <div className="chat-header" style={styles.chatHeader}>
                                 <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)}>←</button>
-                                <div style={styles.avatar}>{getInitial(selectedChat)}</div>
+                                <div style={styles.avatar}>{getInitial(selectedChat, user)}</div>
                                 <div style={{ flex: 1 }}>
                                     <h3 style={styles.chatHeaderName}>
-                                        {getChatName(selectedChat)}
+                                        {getChatName(selectedChat, user)}
                                     </h3>
                                     {!isTyping && getOtherUserPresence(selectedChat)}
                                     {isTyping && (
@@ -1701,14 +1639,14 @@ function Chat() {
                                                             {msg.deleted ? msg.content
                                                                 : msg.type === "image" ? (
                                                                     <img
-                                                                        src={`http://localhost:5000${msg.content}`}
+                                                                        src={`${BACKEND_URL}${msg.content}`}
                                                                         alt={msg.fileName || "Image"}
                                                                         style={styles.messageImage}
                                                                         onClick={() => setPreviewImage(msg.content)}
                                                                     />
                                                                 ) : msg.type === "file" ? (
                                                                     <a
-                                                                        href={`http://localhost:5000${msg.content}`}
+                                                                        href={`${BACKEND_URL}${msg.content}`}
                                                                         target="_blank"
                                                                         rel="noopener noreferrer"
                                                                         style={styles.fileLink}
@@ -1721,7 +1659,7 @@ function Chat() {
                                                                     <div style={styles.audioContainer}>
                                                                         <span style={styles.audioIcon}>🎤</span>
                                                                         <audio controls style={styles.audioPlayer}>
-                                                                            <source src={`http://localhost:5000${msg.content}`} />
+                                                                            <source src={`${BACKEND_URL}${msg.content}`} />
                                                                         </audio>
                                                                     </div>
                                                                 ) : renderContentWithMentions(msg.content)
@@ -2005,7 +1943,7 @@ function Chat() {
                                         <div style={styles.chatAvatar}>
                                             {chat.isGroupChat ? "👥" : "👤"}
                                         </div>
-                                        <span style={{ color: "#fff", flex: 1 }}>{getChatName(chat)}</span>
+                                        <span style={{ color: "#fff", flex: 1 }}>{getChatName(chat, user)}</span>
                                     </div>
                                 ))}
                             </div>
