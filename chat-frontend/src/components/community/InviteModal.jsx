@@ -67,73 +67,74 @@ const styles = {
     overlay: {
         position: "fixed",
         top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: "rgba(0,0,0,0.6)",
+        backgroundColor: "var(--bg-overlay)",
+        backdropFilter: "var(--blur-md)",
         zIndex: 1000,
         display: "flex",
         justifyContent: "center",
         alignItems: "center"
     },
     modal: {
-        backgroundColor: "#18181b",
+        backgroundColor: "var(--bg-elevated)",
         width: "440px",
-        borderRadius: "8px",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+        borderRadius: "var(--radius-xl)",
+        boxShadow: "var(--shadow-xl)",
         overflow: "hidden",
-        fontFamily: "'Inter', sans-serif",
-        color: "#fff"
+        fontFamily: "var(--font-family)",
+        color: "var(--text-primary)"
     },
     header: {
-        padding: "16px 20px",
-        borderBottom: "1px solid rgba(255,255,255,0.1)",
+        padding: "var(--space-md) var(--space-xl)",
+        borderBottom: "1px solid var(--border-default)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        backgroundColor: "#27272a"
+        backgroundColor: "var(--bg-glass)"
     },
     closeBtn: {
-        background: "transparent", border: "none", color: "rgba(255,255,255,0.5)",
-        cursor: "pointer", fontSize: "16px"
+        background: "transparent", border: "none", color: "var(--text-tertiary)",
+        cursor: "pointer", fontSize: "var(--fs-body-lg)"
     },
     body: {
-        padding: "20px"
+        padding: "var(--space-xl)"
     },
     hintText: {
-        fontSize: "14px",
-        color: "rgba(255,255,255,0.7)",
-        marginBottom: "20px"
+        fontSize: "var(--fs-body-sm)",
+        color: "var(--text-secondary)",
+        marginBottom: "var(--space-xl)"
     },
     primaryBtn: {
         width: "100%",
-        padding: "12px",
-        backgroundColor: "#5865F2", // Discord Blurple equivalent
+        padding: "var(--space-md)",
+        backgroundColor: "var(--accent-gradient-start)",
         border: "none",
-        borderRadius: "4px",
-        color: "#fff",
-        fontWeight: "600",
+        borderRadius: "var(--radius-sm)",
+        color: "var(--text-primary)",
+        fontWeight: "var(--fw-semibold)",
         cursor: "pointer",
-        transition: "background 0.2s"
+        transition: "background var(--transition-normal)"
     },
     linkWrapper: {
         display: "flex",
-        gap: "8px"
+        gap: "var(--space-sm)"
     },
     linkInput: {
         flex: 1,
-        padding: "10px",
-        backgroundColor: "#000",
-        border: "1px solid rgba(255,255,255,0.2)",
-        borderRadius: "4px",
-        color: "#fff",
+        padding: "var(--space-sm)",
+        backgroundColor: "var(--bg-input)",
+        border: "1px solid var(--border-default)",
+        borderRadius: "var(--radius-sm)",
+        color: "var(--text-primary)",
         outline: "none"
     },
     copyBtn: {
-        padding: "0 16px",
-        backgroundColor: "#10b981",
-        color: "#fff",
+        padding: "0 var(--space-lg)",
+        backgroundColor: "var(--accent-success)",
+        color: "var(--text-primary)",
         border: "none",
-        borderRadius: "4px",
+        borderRadius: "var(--radius-sm)",
         cursor: "pointer",
-        fontWeight: "600"
+        fontWeight: "var(--fw-semibold)"
     }
 };
 

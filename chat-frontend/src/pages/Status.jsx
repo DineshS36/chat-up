@@ -150,32 +150,32 @@ function Status() {
     }, [viewerOpen, activeStoryIndex, activeUserStories]);
 
     const styles = {
-        container: { display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#141232", color: "#fff", fontFamily: "sans-serif" },
-        header: { padding: "20px", background: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" },
-        backBtn: { background: "none", border: "none", color: "#fff", fontSize: "24px", cursor: "pointer", marginRight: "16px" },
-        content: { flex: 1, overflowY: "auto", padding: "20px" },
-        sectionTitle: { fontSize: "14px", fontWeight: 600, color: "rgba(255,255,255,0.5)", marginBottom: "16px" },
-        statusItem: { display: "flex", alignItems: "center", gap: "16px", padding: "12px", borderRadius: "12px", background: "rgba(255,255,255,0.03)", marginBottom: "8px", cursor: "pointer" },
-        avatarBox: { position: "relative", width: "56px", height: "56px" },
-        avatar: { width: "100%", height: "100%", borderRadius: "28px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: "20px" },
-        ring: { position: "absolute", top: -3, left: -3, right: -3, bottom: -3, border: "2px solid #10b981", borderRadius: "50%" },
-        addIcon: { position: "absolute", bottom: 0, right: 0, background: "#10b981", color: "#fff", width: "20px", height: "20px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", border: "2px solid #141232" },
+        container: { display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)", fontFamily: "var(--font-family)" },
+        header: { padding: "var(--space-xl)", background: "var(--bg-glass)", display: "flex", alignItems: "center", borderBottom: "1px solid var(--border-subtle)" },
+        backBtn: { background: "none", border: "none", color: "var(--text-primary)", fontSize: "24px", cursor: "pointer", marginRight: "var(--space-lg)" },
+        content: { flex: 1, overflowY: "auto", padding: "var(--space-xl)" },
+        sectionTitle: { fontSize: "var(--fs-body-sm)", fontWeight: "var(--fw-semibold)", color: "var(--text-tertiary)", marginBottom: "var(--space-lg)" },
+        statusItem: { display: "flex", alignItems: "center", gap: "var(--space-lg)", padding: "var(--space-md)", borderRadius: "var(--radius-xl)", background: "var(--bg-glass)", marginBottom: "var(--space-sm)", cursor: "pointer" },
+        avatarBox: { position: "relative", width: "var(--avatar-lg)", height: "var(--avatar-lg)" },
+        avatar: { width: "100%", height: "100%", borderRadius: "28px", background: "var(--accent-gradient)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: "var(--fs-heading)" },
+        ring: { position: "absolute", top: -3, left: -3, right: -3, bottom: -3, border: "2px solid var(--accent-success)", borderRadius: "var(--radius-full)" },
+        addIcon: { position: "absolute", bottom: 0, right: 0, background: "var(--accent-success)", color: "var(--text-primary)", width: "20px", height: "20px", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-body-sm)", border: "2px solid var(--bg-surface)" },
         info: { flex: 1 },
-        name: { fontSize: "16px", fontWeight: 600, margin: "0 0 4px" },
-        time: { fontSize: "13px", color: "rgba(255,255,255,0.5)", margin: 0 },
+        name: { fontSize: "var(--fs-body-lg)", fontWeight: "var(--fw-semibold)", margin: "0 0 var(--space-xs)" },
+        time: { fontSize: "var(--fs-caption)", color: "var(--text-tertiary)", margin: 0 },
 
         // Viewer styles
         viewer: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#000", zIndex: 9999, display: "flex", flexDirection: "column" },
-        progressBarContainer: { display: "flex", gap: "4px", padding: "12px 16px", position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 },
-        progressSegment: { flex: 1, height: "3px", backgroundColor: "rgba(255,255,255,0.3)", borderRadius: "2px", overflow: "hidden" },
-        progressFill: { height: "100%", backgroundColor: "#fff", transition: "width 0.05s linear" },
-        viewerHeader: { position: "absolute", top: "24px", left: "16px", right: "16px", display: "flex", alignItems: "center", zIndex: 10 },
-        viewerAvatar: { width: "40px", height: "40px", borderRadius: "20px", marginRight: "12px" },
-        closeBtn: { marginLeft: "auto", background: "none", border: "none", color: "#fff", fontSize: "28px", cursor: "pointer" },
+        progressBarContainer: { display: "flex", gap: "var(--space-xs)", padding: "var(--space-md) var(--space-lg)", position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 },
+        progressSegment: { flex: 1, height: "3px", backgroundColor: "var(--text-muted)", borderRadius: "2px", overflow: "hidden" },
+        progressFill: { height: "100%", backgroundColor: "var(--text-primary)", transition: "width 0.05s linear" },
+        viewerHeader: { position: "absolute", top: "var(--space-2xl)", left: "var(--space-lg)", right: "var(--space-lg)", display: "flex", alignItems: "center", zIndex: 10 },
+        viewerAvatar: { width: "40px", height: "40px", borderRadius: "20px", marginRight: "var(--space-md)" },
+        closeBtn: { marginLeft: "auto", background: "none", border: "none", color: "var(--text-primary)", fontSize: "28px", cursor: "pointer" },
         mediaContainer: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" },
         media: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" },
         touchArea: { position: "absolute", top: "80px", bottom: 0, width: "30%", zIndex: 5 },
-        caption: { position: "absolute", bottom: "40px", left: "20px", right: "20px", textAlign: "center", fontSize: "16px", textShadow: "0 1px 4px rgba(0,0,0,0.8)" }
+        caption: { position: "absolute", bottom: "40px", left: "var(--space-xl)", right: "var(--space-xl)", textAlign: "center", fontSize: "var(--fs-body-lg)", textShadow: "0 1px 4px rgba(0,0,0,0.8)" }
     };
 
     return (

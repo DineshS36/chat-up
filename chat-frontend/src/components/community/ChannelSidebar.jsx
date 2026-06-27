@@ -2,15 +2,15 @@ import React from "react";
 
 const ChannelSidebar = ({ community, activeChannel, onSelectChannel }) => {
     return (
-        <div style={styles.container}>
+        <div style={styles.sidebar}>
             {/* Header */}
             <div style={styles.header}>
-                <h3 style={styles.communityName}>{community.name}</h3>
-                <span style={styles.communityRole}>Active Server</span>
+                <h3 style={styles.title}>{community.name}</h3>
+                <span style={styles.subtitle}>Active Server</span>
             </div>
 
             {/* Channels List */}
-            <div style={styles.channelScroll}>
+            <div style={styles.list}>
                 <div style={styles.categoryHeader}>
                     <span>TEXT CHANNELS</span>
                     <button style={styles.addBtn} title="Create Channel">+</button>
@@ -21,7 +21,7 @@ const ChannelSidebar = ({ community, activeChannel, onSelectChannel }) => {
                         key={channel._id}
                         style={{
                             ...styles.channelItem,
-                            ...(activeChannel?._id === channel._id ? styles.activeChannel : {})
+                            ...(activeChannel?._id === channel._id ? styles.channelItemActive : {})
                         }}
                         onClick={() => onSelectChannel(channel)}
                     >
@@ -43,104 +43,104 @@ const ChannelSidebar = ({ community, activeChannel, onSelectChannel }) => {
 };
 
 const styles = {
-    container: {
-        width: "240px",
-        minWidth: "240px",
-        backgroundColor: "#1f2937", // A lighter dark-grey
+    sidebar: {
+        width: "var(--channel-sidebar-width)",
+        minWidth: "var(--channel-sidebar-width)",
+        backgroundColor: "var(--bg-sidebar)",
         display: "flex",
         flexDirection: "column",
-        borderRight: "1px solid rgba(255,255,255,0.05)"
+        borderRight: "1px solid var(--border-default)"
     },
     header: {
-        padding: "16px",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+        padding: "var(--space-lg)",
+        borderBottom: "1px solid var(--border-default)",
+        boxShadow: "var(--shadow-sm)",
         zIndex: 10
     },
-    communityName: {
+    title: {
         margin: 0,
-        fontSize: "16px",
-        fontWeight: "700",
+        fontSize: "var(--fs-body-lg)",
+        fontWeight: "var(--fw-bold)",
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis"
     },
-    communityRole: {
-        fontSize: "12px",
-        color: "rgba(255,255,255,0.5)",
-        marginTop: "4px",
+    subtitle: {
+        fontSize: "var(--fs-small)",
+        color: "var(--text-tertiary)",
+        marginTop: "var(--space-xs)",
         display: "block"
     },
-    channelScroll: {
+    list: {
         flex: 1,
         overflowY: "auto",
-        padding: "16px 8px"
+        padding: "var(--space-lg) var(--space-sm)"
     },
     categoryHeader: {
-        fontSize: "11px",
-        fontWeight: "700",
-        color: "rgba(255,255,255,0.4)",
+        fontSize: "var(--fs-micro)",
+        fontWeight: "var(--fw-bold)",
+        color: "var(--text-muted)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "0 8px",
-        marginBottom: "8px"
+        padding: "0 var(--space-sm)",
+        marginBottom: "var(--space-sm)"
     },
     addBtn: {
         background: "none",
         border: "none",
         color: "inherit",
-        fontSize: "16px",
+        fontSize: "var(--fs-body-lg)",
         cursor: "pointer",
         padding: 0
     },
     channelItem: {
         display: "flex",
         alignItems: "center",
-        padding: "6px 8px",
-        borderRadius: "4px",
+        gap: "var(--space-sm)",
+        padding: "6px var(--space-sm)",
+        borderRadius: "var(--radius-sm)",
         cursor: "pointer",
-        color: "rgba(255,255,255,0.6)",
+        color: "var(--text-tertiary)",
         marginBottom: "2px",
-        transition: "all 0.1s ease"
+        transition: "all var(--transition-fast)"
     },
-    activeChannel: {
-        backgroundColor: "rgba(255,255,255,0.1)",
-        color: "#fff"
+    channelItemActive: {
+        backgroundColor: "var(--bg-surface-active)",
+        color: "var(--text-primary)"
     },
     hash: {
-        marginRight: "8px",
-        fontSize: "18px",
-        fontWeight: "400",
-        color: "rgba(255,255,255,0.4)"
+        fontSize: "var(--fs-subheading)",
+        fontWeight: "var(--fw-regular)",
+        color: "var(--text-muted)"
     },
     channelName: {
-        fontSize: "15px",
-        fontWeight: "500",
+        fontSize: "var(--fs-body)",
+        fontWeight: "var(--fw-medium)",
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis"
     },
     emptyText: {
-        padding: "0 8px",
-        fontSize: "13px",
-        color: "rgba(255,255,255,0.3)",
+        padding: "0 var(--space-sm)",
+        fontSize: "var(--fs-caption)",
+        color: "var(--text-muted)",
         fontStyle: "italic"
     },
     footerActions: {
-        padding: "16px",
-        borderTop: "1px solid rgba(255,255,255,0.05)"
+        padding: "var(--space-lg)",
+        borderTop: "1px solid var(--border-subtle)"
     },
     inviteButton: {
         width: "100%",
-        padding: "8px 0",
-        backgroundColor: "rgba(16, 185, 129, 0.1)",
-        color: "#10b981",
-        border: "1px solid rgba(16, 185, 129, 0.2)",
-        borderRadius: "4px",
+        padding: "var(--space-sm) 0",
+        backgroundColor: "var(--accent-success-bg)",
+        color: "var(--accent-success)",
+        border: "1px solid var(--accent-success-border)",
+        borderRadius: "var(--radius-sm)",
         cursor: "pointer",
-        fontWeight: "600",
-        transition: "all 0.2s"
+        fontWeight: "var(--fw-semibold)",
+        transition: "all var(--transition-smooth)"
     }
 };
 

@@ -38,40 +38,40 @@ const CommunitySidebar = ({ communities, activeCommunity, onSelectCommunity }) =
 
 const styles = {
     container: {
-        width: "72px",
-        minWidth: "72px",
-        backgroundColor: "#111827", // Darkest grey
+        width: "var(--community-sidebar-width)",
+        minWidth: "var(--community-sidebar-width)",
+        backgroundColor: "var(--bg-space)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        padding: "12px 0",
-        gap: "10px",
+        padding: "var(--space-md) 0",
+        gap: "var(--space-lg)",
         overflowY: "auto"
     },
     divider: {
         width: "32px",
         border: "none",
-        borderBottom: "2px solid rgba(255,255,255,0.1)",
-        margin: "4px 0"
+        borderBottom: "2px solid var(--border-medium)",
+        margin: "var(--space-xs) 0"
     },
     iconWrapper: {
-        width: "48px",
-        height: "48px",
-        borderRadius: "24px", // Circles that ideally animate to rounded-squares on hover
+        width: "var(--space-5xl)",
+        height: "var(--space-5xl)",
+        borderRadius: "var(--radius-pill)",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
         cursor: "pointer",
-        transition: "all 0.2s ease",
+        transition: "all var(--transition-smooth)",
         position: "relative",
     },
     activeWrapper: {
-        borderRadius: "16px",
-        backgroundColor: "rgba(255,255,255,0.1)",
+        borderRadius: "var(--radius-2xl)",
+        backgroundColor: "var(--border-medium)",
     },
     homeIcon: {
-        fontSize: "24px",
-        color: "#fff",
+        fontSize: "var(--space-2xl)",
+        color: "var(--text-primary)",
         opacity: 0.8
     },
     avatar: {
@@ -81,9 +81,9 @@ const styles = {
         objectFit: "cover"
     },
     initials: {
-        fontSize: "18px",
-        fontWeight: "600",
-        color: "#fff"
+        fontSize: "var(--fs-subheading)",
+        fontWeight: "var(--fw-semibold)",
+        color: "var(--text-primary)"
     }
 };
 

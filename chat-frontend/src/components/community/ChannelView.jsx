@@ -110,61 +110,61 @@ const styles = {
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#313338" // Slightly lighter main background
+        backgroundColor: "var(--bg-surface)"
     },
     header: {
         height: "64px",
-        padding: "0 16px",
+        padding: "0 var(--space-lg)",
         display: "flex",
         alignItems: "center",
-        borderBottom: "1px solid rgba(0,0,0,0.2)",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+        borderBottom: "1px solid var(--border-default)",
+        boxShadow: "var(--shadow-sm)",
         zIndex: 5
     },
     hash: {
-        fontSize: "24px",
-        color: "rgba(255,255,255,0.4)",
-        marginRight: "8px",
+        fontSize: "var(--space-2xl)",
+        color: "var(--text-muted)",
+        marginRight: "var(--space-sm)",
         fontWeight: "300"
     },
     title: {
         margin: 0,
-        fontSize: "16px",
-        fontWeight: "600"
+        fontSize: "var(--fs-body-lg)",
+        fontWeight: "var(--fw-semibold)"
     },
     desc: {
-        marginLeft: "12px",
-        fontSize: "14px",
-        color: "rgba(255,255,255,0.5)"
+        marginLeft: "var(--space-md)",
+        fontSize: "var(--fs-body-sm)",
+        color: "var(--text-tertiary)"
     },
     feed: {
         flex: 1,
         overflowY: "auto",
-        padding: "16px",
+        padding: "var(--space-lg)",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "flex-end" // Bottom heavy
+        justifyContent: "flex-end"
     },
     welcomeState: {
-        padding: "40px 16px",
+        padding: "var(--space-4xl) var(--space-lg)",
         marginTop: "auto"
     },
     messageRow: {
         display: "flex",
-        gap: "16px",
-        marginBottom: "16px",
+        gap: "var(--space-lg)",
+        marginBottom: "var(--space-lg)",
     },
     msgAvatar: {
         width: "40px",
         height: "40px",
-        borderRadius: "50%",
-        backgroundColor: "#5865F2",
+        borderRadius: "var(--radius-full)",
+        background: "var(--accent-gradient)",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
         fontWeight: "bold",
-        fontSize: "18px",
-        color: "#fff",
+        fontSize: "var(--fs-subheading)",
+        color: "var(--text-primary)",
         flexShrink: 0
     },
     msgBody: {
@@ -175,54 +175,54 @@ const styles = {
     msgInfo: {
         display: "flex",
         alignItems: "baseline",
-        gap: "8px",
-        marginBottom: "4px"
+        gap: "var(--space-sm)",
+        marginBottom: "var(--space-xs)"
     },
     msgSender: {
-        fontWeight: "600",
-        color: "#fff",
-        fontSize: "15px"
+        fontWeight: "var(--fw-semibold)",
+        color: "var(--text-primary)",
+        fontSize: "var(--fs-body)"
     },
     msgTime: {
-        fontSize: "12px",
-        color: "rgba(255,255,255,0.4)"
+        fontSize: "var(--fs-small)",
+        color: "var(--text-muted)"
     },
     msgContent: {
-        color: "rgba(255,255,255,0.9)",
-        fontSize: "15px",
+        color: "var(--text-secondary)",
+        fontSize: "var(--fs-body)",
         lineHeight: "1.4"
     },
     inputArea: {
-        padding: "0 16px 24px"
+        padding: "0 var(--space-lg) var(--space-2xl)"
     },
     inputForm: {
         display: "flex",
         alignItems: "center",
-        backgroundColor: "#383a40",
-        borderRadius: "8px",
-        padding: "10px 16px",
-        gap: "12px"
+        backgroundColor: "var(--bg-elevated)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-lg) var(--space-lg)",
+        gap: "var(--space-md)"
     },
     attachBtn: {
-        background: "rgba(255,255,255,0.1)",
+        background: "var(--border-medium)",
         border: "none",
-        color: "rgba(255,255,255,0.8)",
-        width: "24px",
-        height: "24px",
-        borderRadius: "50%",
+        color: "var(--text-secondary)",
+        width: "var(--space-2xl)",
+        height: "var(--space-2xl)",
+        borderRadius: "var(--radius-full)",
         cursor: "pointer",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        fontSize: "18px",
+        fontSize: "var(--fs-subheading)",
         flexShrink: 0
     },
     textInput: {
         flex: 1,
         background: "transparent",
         border: "none",
-        color: "#fff",
-        fontSize: "15px",
+        color: "var(--text-primary)",
+        fontSize: "var(--fs-body)",
         outline: "none"
     }
 };

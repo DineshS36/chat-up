@@ -42,9 +42,9 @@ const styles = {
     dashboardContainer: {
         display: "flex",
         height: "100vh",
-        backgroundColor: "#1e1e1e",
-        color: "#fff",
-        fontFamily: "'Inter', sans-serif"
+        backgroundColor: "var(--bg-space)",
+        color: "var(--text-primary)",
+        fontFamily: "var(--font-family)"
     },
     emptyState: {
         flex: 1,
@@ -52,9 +52,9 @@ const styles = {
         justifyContent: "center",
         alignItems: "center",
         flexDirection: "column",
-        backgroundColor: "#18181b",
-        color: "rgba(255,255,255,0.4)",
-        fontSize: "18px"
+        backgroundColor: "var(--bg-surface)",
+        color: "var(--text-muted)",
+        fontSize: "var(--fs-subheading)"
     }
 };
 
