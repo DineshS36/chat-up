@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
 import API from "../services/api";
+import { useToast } from "../context/toast";
 
 function Register() {
     const [name, setName] = useState("");
@@ -9,6 +11,7 @@ function Register() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const toast = useToast();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -17,11 +20,15 @@ function Register() {
 
         try {
             await API.post("/auth/register", { name, email, password });
+            toast.success("Account created successfully! Please sign in.", { 
+                title: "Welcome to ChatUp!",
+                duration: 4000 
+            });
             navigate("/");
         } catch (err) {
-            setError(
-                err.response?.data?.message || "Registration failed. Please try again."
-            );
+            const message = err.response?.data?.message || "Registration failed. Please try again.";
+            setError(message);
+            toast.error(message, { title: "Registration Failed" });
         } finally {
             setLoading(false);
         }
@@ -31,7 +38,7 @@ function Register() {
         <div style={styles.wrapper}>
             <div style={styles.card}>
                 <div style={styles.header}>
-                    <h1 style={styles.logo}>💬 ChatUp</h1>
+                    <h1 style={styles.logo}><MessageCircle size={28} style={{ verticalAlign: "middle", marginRight: "8px" }} />ChatUp</h1>
                     <p style={styles.subtitle}>Create your account</p>
                 </div>
 

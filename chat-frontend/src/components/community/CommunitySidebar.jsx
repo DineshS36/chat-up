@@ -1,11 +1,14 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
+import { MessageCircle, Plus } from "lucide-react";
 
 const CommunitySidebar = ({ communities, activeCommunity, onSelectCommunity }) => {
+    const navigate = useNavigate();
     return (
         <div style={styles.container}>
             {/* Direct Messages Icon (to go back to regular chat) */}
-            <div style={styles.iconWrapper} onClick={() => window.location.href = '/chat'}>
-                <div style={styles.homeIcon}>💬</div>
+            <div style={styles.iconWrapper} onClick={() => navigate('/chat')}>
+                <MessageCircle size={22} style={styles.homeIcon} />
             </div>
             <hr style={styles.divider} />
 
@@ -29,8 +32,8 @@ const CommunitySidebar = ({ communities, activeCommunity, onSelectCommunity }) =
             ))}
 
             {/* Add Community Button */}
-            <div style={{ ...styles.iconWrapper, backgroundColor: "rgba(255,255,255,0.05)" }} title="Create/Join Community">
-                <div style={{ color: "#10b981", fontSize: "20px" }}>+</div>
+            <div style={{ ...styles.iconWrapper, backgroundColor: "var(--bg-surface-hover)" }} title="Create/Join Community">
+                <Plus size={20} style={{ color: "var(--accent-success)" }} />
             </div>
         </div>
     );

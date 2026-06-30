@@ -1,9 +1,12 @@
 import React, { useState } from "react";
+import { X } from "lucide-react";
 import api from "../../services/api";
+import { useToast } from "../../context/toast";
 
 const InviteModal = ({ community, onClose }) => {
     const [inviteLink, setInviteLink] = useState("");
     const [loading, setLoading] = useState(false);
+    const toast = useToast();
 
     const generateLink = async () => {
         try {
@@ -11,9 +14,14 @@ const InviteModal = ({ community, onClose }) => {
             const res = await api.post("/invites", { communityId: community._id, expiresInDays: 7 }); // Default to 7 days expiry
             const baseUrl = window.location.origin;
             setInviteLink(`${baseUrl}/join/${res.data.inviteCode}`);
+            toast.success("Invite link generated successfully.", {
+                title: "Invite Ready",
+            });
         } catch (error) {
             console.error("Failed to make invite", error);
-            alert("Error creating invite link");
+            toast.error("Error creating invite link. Please try again.", {
+                title: "Invite Failed",
+            });
         } finally {
             setLoading(false);
         }
@@ -24,7 +32,7 @@ const InviteModal = ({ community, onClose }) => {
             <div style={styles.modal} onClick={e => e.stopPropagation()}>
                 <div style={styles.header}>
                     <h3 style={{ margin: 0 }}>Invite friends to {community.name}</h3>
-                    <button style={styles.closeBtn} onClick={onClose}>✕</button>
+                    <button style={styles.closeBtn} onClick={onClose}><X size={16} /></button>
                 </div>
 
                 <div style={styles.body}>
@@ -48,9 +56,19 @@ const InviteModal = ({ community, onClose }) => {
                             />
                             <button
                                 style={styles.copyBtn}
-                                onClick={() => {
-                                    navigator.clipboard.writeText(inviteLink);
-                                    alert('Copied to clipboard!');
+                                onClick={async () => {
+                                    try {
+                                        await navigator.clipboard.writeText(inviteLink);
+                                        toast.success("Invite link copied to your clipboard.", {
+                                            title: "Copied",
+                                            duration: 3000,
+                                        });
+                                    } catch (error) {
+                                        console.error("Failed to copy invite link", error);
+                                        toast.error("Could not copy the invite link.", {
+                                            title: "Copy Failed",
+                                        });
+                                    }
                                 }}
                             >
                                 Copy

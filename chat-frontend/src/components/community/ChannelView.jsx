@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from "react";
-// Reusing global API client for messages and sockets
-import api from "../../services/api";
 import socket from "../../socket/socket";
 
 const ChannelView = ({ channel, user }) => {
@@ -10,10 +8,6 @@ const ChannelView = ({ channel, user }) => {
     // Pseudo-fetch logic to emulate the DM system fetching but bound to the channel Id
     useEffect(() => {
         if (!channel) return;
-
-        // Example mock structural fetch mapping to a potential GET /api/messages/:channelId endpoint
-        // For standard implementation here, we assume standard websockets push logic is enough once connected
-        setMessages([]);
 
         // Notify socket of new room
         socket.emit("join_channel", channel._id);

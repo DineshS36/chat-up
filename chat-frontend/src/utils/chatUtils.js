@@ -5,7 +5,7 @@ export const getChatName = (chat, currentUser) => {
 };
 
 export const getInitial = (chat, currentUser) => {
-    if (chat.isGroupChat) return "👥";
+    if (chat.isGroupChat) return "G";
     const name = getChatName(chat, currentUser);
     return name ? name.charAt(0).toUpperCase() : "?";
 };

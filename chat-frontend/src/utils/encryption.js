@@ -13,7 +13,7 @@ export const decryptText = (encryptedData) => {
         const bytes = CryptoJS.AES.decrypt(encryptedData, SECRET_KEY);
         const decrypted = bytes.toString(CryptoJS.enc.Utf8);
         return decrypted || encryptedData;
-    } catch (e) {
+    } catch {
         return encryptedData;
     }
 };

@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { X } from "lucide-react";
 import API from "../services/api";
+import { useToast } from "../context/toast";
+import { StatusListSkeleton } from "../components/LoadingSkeletons";
 
 function Status() {
     const [stories, setStories] = useState([]);
@@ -10,6 +13,7 @@ function Status() {
     const navigate = useNavigate();
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const fileInputRef = useRef(null);
+    const toast = useToast();
 
     // Viewer state
     const [viewerOpen, setViewerOpen] = useState(false);
@@ -22,7 +26,7 @@ function Status() {
 
     useEffect(() => {
         fetchStories();
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fetchStories = async () => {
         try {
@@ -46,6 +50,9 @@ function Status() {
             setStories(friends);
         } catch (error) {
             console.error("Error fetching stories:", error);
+            toast.error("Failed to load status updates. Please refresh and try again.", {
+                title: "Status Unavailable",
+            });
         } finally {
             setLoading(false);
         }
@@ -65,10 +72,15 @@ function Status() {
             await API.post("/stories", formData, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
-            fetchStories();
+            await fetchStories();
+            toast.success("Your status was uploaded successfully.", {
+                title: "Status Updated",
+            });
         } catch (error) {
             console.error("Upload story error", error);
-            alert("Failed to upload story");
+            toast.error("Failed to upload your status. Please try again.", {
+                title: "Upload Failed",
+            });
         } finally {
             setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = "";
@@ -147,7 +159,7 @@ function Status() {
         }, 50);
 
         return () => clearInterval(progressTimerRef.current);
-    }, [viewerOpen, activeStoryIndex, activeUserStories]);
+    }, [viewerOpen, activeStoryIndex, activeUserStories]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const styles = {
         container: { display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "var(--bg-surface)", color: "var(--text-primary)", fontFamily: "var(--font-family)" },
@@ -220,7 +232,7 @@ function Status() {
                 {stories.length > 0 && <div style={{ ...styles.sectionTitle, marginTop: "24px" }}>RECENT UPDATES</div>}
 
                 {loading ? (
-                    <p style={{ color: "rgba(255,255,255,0.5)" }}>Loading statuses...</p>
+                    <StatusListSkeleton />
                 ) : (
                     stories.map(group => (
                         <div key={group.user._id} style={styles.statusItem} onClick={() => openViewer(group)}>
@@ -259,7 +271,7 @@ function Status() {
                                 {new Date(activeUserStories.stories[activeStoryIndex].createdAt).toLocaleTimeString()}
                             </span>
                         </div>
-                        <button style={styles.closeBtn} onClick={closeViewer}>✕</button>
+                        <button style={styles.closeBtn} onClick={closeViewer}><X size={18} /></button>
                     </div>
 
                     <div style={styles.mediaContainer}>

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import CommunitySidebar from "../../components/community/CommunitySidebar";
 import ChannelSidebar from "../../components/community/ChannelSidebar";
 import ChannelView from "../../components/community/ChannelView";
 
 const CommunityDashboard = ({ user }) => {
-    const [communities, setCommunities] = useState([]);
+    const [communities] = useState([]);
     const [activeCommunity, setActiveCommunity] = useState(null);
     const [activeChannel, setActiveChannel] = useState(null);
 
@@ -28,7 +28,7 @@ const CommunityDashboard = ({ user }) => {
 
             {/* Right Feed: Messages in active channel */}
             {activeChannel ? (
-                <ChannelView channel={activeChannel} user={user} />
+                <ChannelView key={activeChannel._id} channel={activeChannel} user={user} />
             ) : (
                 <div style={styles.emptyState}>
                     Select a channel to start talking!

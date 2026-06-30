@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot } from "lucide-react";
 import API from "../services/api";
 import UserList from "../components/UserList";
 import socket from "../socket/socket";
 import { encryptText, decryptMessageObj } from "../utils/encryption";
 import { formatDuration, formatLastSeen, formatTime, formatMessageTime } from "../utils/dateUtils";
 import { getChatName, getInitial } from "../utils/chatUtils";
+import { ChatListSkeleton, MessageListSkeleton } from "../components/LoadingSkeletons";
+import { useToast } from "../context/toast";
 
 function Chat() {
     const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -74,6 +77,7 @@ function Chat() {
     const messageRefs = useRef({});
     const fileInputRef = useRef(null);
     const navigate = useNavigate();
+    const toast = useToast();
 
     // Get current user from localStorage
     const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -118,7 +122,7 @@ function Chat() {
             }
             if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── Listen for incoming messages ───
     useEffect(() => {
@@ -322,7 +326,9 @@ function Chat() {
         };
 
         const handleCallRejected = ({ reason }) => {
-            alert(`Call rejected: ${reason}`);
+            toast.info(`Call rejected: ${reason}`, {
+                title: "Call Ended",
+            });
             endCallLocally();
         };
 
@@ -378,7 +384,7 @@ function Chat() {
             socket.off("webrtc_signal", handleWebRTCSignal);
             socket.off("end_call", handleEndCall);
         };
-    }, [selectedChatId]);
+    }, [selectedChatId, user._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── WebRTC Handlers ───
     const setupWebRTC = async (targetId, isInitiator, type = "audio") => {
@@ -422,7 +428,9 @@ function Chat() {
             }
         } catch (err) {
             console.error("Error accessing media devices:", err);
-            alert("Could not access camera/microphone.");
+            toast.error("Could not access your camera or microphone.", {
+                title: "Permission Required",
+            });
             endCallLocally();
         }
     };
@@ -553,7 +561,7 @@ function Chat() {
             setMessages([]);
             setIsTyping(false);
         }
-    }, [selectedChatId]);
+    }, [selectedChatId, user._id]);
 
     // ─── Auto-scroll to bottom ───
     useEffect(() => {
@@ -613,7 +621,9 @@ function Chat() {
             link.remove();
         } catch (err) {
             console.error('Failed to export chat:', err);
-            alert('Failed to export chat. Ensure backend modular routes are functioning.');
+            toast.error("Failed to export this chat backup.", {
+                title: "Export Failed",
+            });
         }
     };
 
@@ -756,6 +766,9 @@ function Chat() {
             fetchChats(); // Update sidebar lastMessage
         } catch (error) {
             console.error("Error managing message:", error);
+            toast.error("Failed to send the message. Please try again.", {
+                title: editingMessageId ? "Update Failed" : "Send Failed",
+            });
         }
     };
 
@@ -764,7 +777,9 @@ function Chat() {
 
         const scheduledDate = new Date(scheduledTime);
         if (scheduledDate <= new Date()) {
-            alert("Scheduled time must be in the future");
+            toast.warning("Scheduled time must be in the future.", {
+                title: "Invalid Schedule",
+            });
             return;
         }
 
@@ -799,9 +814,14 @@ function Chat() {
             setReplyMessage(null);
             setShowSchedulePicker(false);
             setScheduledTime("");
+            toast.success("Message scheduled successfully.", {
+                title: "Scheduled",
+            });
         } catch (error) {
             console.error("Error scheduling message:", error);
-            alert("Failed to schedule message.");
+            toast.error("Failed to schedule the message.", {
+                title: "Schedule Failed",
+            });
         }
     };
 
@@ -835,6 +855,9 @@ function Chat() {
             fetchChats();
         } catch (error) {
             console.error("Failed to delete message", error);
+            toast.error("Could not delete the message.", {
+                title: "Delete Failed",
+            });
         } finally {
             setMessageToDelete(null);
         }
@@ -875,6 +898,9 @@ function Chat() {
             console.error("Failed to react", error);
             // On failure, revert by refetching
             fetchMessages(selectedChatId);
+            toast.error("Could not update the reaction.", {
+                title: "Reaction Failed",
+            });
         }
     };
 
@@ -914,19 +940,33 @@ function Chat() {
             fetchChats();
         } catch (error) {
             console.error("Bulk delete failed", error);
+            toast.error("Could not delete the selected messages.", {
+                title: "Bulk Delete Failed",
+            });
         } finally {
             setSelectedMessages([]);
         }
     };
 
-    const handleCopySelected = () => {
+    const handleCopySelected = async () => {
         const text = selectedMessages
             .map((id) => messages.find((m) => m._id === id)?.content)
             .filter(Boolean)
             .join("\n");
-        navigator.clipboard.writeText(text).then(() => {
+
+        try {
+            await navigator.clipboard.writeText(text);
             setSelectedMessages([]);
-        });
+            toast.success("Selected messages copied to clipboard.", {
+                title: "Copied",
+                duration: 3000,
+            });
+        } catch (error) {
+            console.error("Failed to copy selected messages", error);
+            toast.error("Could not copy the selected messages.", {
+                title: "Copy Failed",
+            });
+        }
     };
 
     // ─── Forward Message handler ───
@@ -938,8 +978,14 @@ function Chat() {
                 targetChatId
             });
             setForwardMessageId(null);
+            toast.success("Message forwarded successfully.", {
+                title: "Forwarded",
+            });
         } catch (error) {
             console.error("Failed to forward message", error);
+            toast.error("Could not forward the message.", {
+                title: "Forward Failed",
+            });
         }
     };
 
@@ -999,6 +1045,9 @@ function Chat() {
             if (data.success) setPinnedMessages(data.data);
         } catch (error) {
             console.error("Failed to pin", error);
+            toast.error("Could not pin this message.", {
+                title: "Pin Failed",
+            });
         }
     };
 
@@ -1008,6 +1057,9 @@ function Chat() {
             if (data.success) setPinnedMessages(data.data);
         } catch (error) {
             console.error("Failed to unpin", error);
+            toast.error("Could not unpin this message.", {
+                title: "Unpin Failed",
+            });
         }
     };
 
@@ -1032,8 +1084,15 @@ function Chat() {
                 headers: { "Content-Type": "multipart/form-data" },
             });
             fetchChats();
+            toast.success("File uploaded successfully.", {
+                title: "Upload Complete",
+                duration: 3000,
+            });
         } catch (error) {
             console.error("File upload failed", error);
+            toast.error("Could not upload the selected file.", {
+                title: "Upload Failed",
+            });
         }
 
         // Reset file input
@@ -1077,8 +1136,15 @@ function Chat() {
                         headers: { "Content-Type": "multipart/form-data" },
                     });
                     fetchChats();
+                    toast.success("Voice message sent successfully.", {
+                        title: "Voice Message Sent",
+                        duration: 3000,
+                    });
                 } catch (error) {
                     console.error("Audio upload failed", error);
+                    toast.error("Could not send the voice message.", {
+                        title: "Voice Upload Failed",
+                    });
                 }
 
                 // Cleanup stream post-upload
@@ -1095,7 +1161,9 @@ function Chat() {
 
         } catch (error) {
             console.error("Microphone access denied or error:", error);
-            alert("Could not access microphone.");
+            toast.error("Could not access your microphone.", {
+                title: "Microphone Unavailable",
+            });
         }
     };
 
@@ -1144,19 +1212,19 @@ function Chat() {
             case "read":
                 return (
                     <span style={styles.tickRead} title="Read">
-                        ✓✓
+                        <CheckCheck size={14} />
                     </span>
                 );
             case "delivered":
                 return (
                     <span style={styles.tickDelivered} title="Delivered">
-                        ✓✓
+                        <CheckCheck size={14} />
                     </span>
                 );
             default:
                 return (
                     <span style={styles.tickSent} title="Sent">
-                        ✓
+                        <Check size={14} />
                     </span>
                 );
         }
@@ -1182,9 +1250,14 @@ function Chat() {
             setShowGroupInfo(false);
             setSelectedChatId(null);
             fetchChats();
+            toast.success("You left the group successfully.", {
+                title: "Group Left",
+            });
         } catch (error) {
             console.error("Failed to leave group:", error);
-            alert("Could not leave group.");
+            toast.error("Could not leave the group.", {
+                title: "Leave Failed",
+            });
         }
     };
 
@@ -1193,9 +1266,14 @@ function Chat() {
         try {
             await API.put(`/chats/${selectedChatId}/remove`, { userId: participantId });
             // The socket 'user_left_group' will trigger the state refresh naturally
+            toast.success("Participant removed successfully.", {
+                title: "Participant Removed",
+            });
         } catch (error) {
             console.error("Failed to remove participant:", error);
-            alert("Could not remove participant.");
+            toast.error("Could not remove the participant.", {
+                title: "Removal Failed",
+            });
         }
     };
 
@@ -1203,9 +1281,14 @@ function Chat() {
         try {
             await API.put(`/chats/${groupToAddUsers}/add`, { userId });
             setGroupToAddUsers(null);
+            toast.success("User added to the group successfully.", {
+                title: "User Added",
+            });
         } catch (error) {
             console.error("Failed to add user to group:", error);
-            alert("Could not add user. User might already be in the group.");
+            toast.error("Could not add the user to the group.", {
+                title: "Add User Failed",
+            });
         }
     };
 
@@ -1218,7 +1301,7 @@ function Chat() {
         } else {
             setPinnedMessages([]);
         }
-    }, [selectedChatId]);
+    }, [selectedChat?.pinnedMessages]);
 
     return (
         <>
@@ -1249,31 +1332,31 @@ function Chat() {
                 {/* ─── Sidebar ─── */}
                 <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar}>
                     <div style={styles.sidebarHeader}>
-                        <h2 style={styles.sidebarTitle}>💬 Chats</h2>
+                        <h2 style={styles.sidebarTitle}><MessageCircle size={20} style={{ verticalAlign: "middle", marginRight: "6px" }} />Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
                             <button
                                 onClick={() => navigate("/status")}
-                                style={{ ...styles.newChatBtn, background: "rgba(16,185,129,0.2)", color: "#10b981", borderColor: "rgba(16,185,129,0.3)" }}
+                                style={{ ...styles.newChatBtn, background: "var(--accent-success-bg)", color: "var(--accent-success)", borderColor: "var(--accent-success-border)" }}
                                 title="Status"
                             >
-                                ⭕
+                                <CircleDot size={18} />
                             </button>
                             <button
                                 onClick={() => setShowUserList(true)}
                                 style={styles.newChatBtn}
                                 title="New Chat"
                             >
-                                +
+                                <Plus size={18} />
                             </button>
                             <button onClick={handleLogout} style={styles.logoutBtn} title="Logout">
-                                ↪
+                                <LogOut size={16} />
                             </button>
                         </div>
                     </div>
 
                     <div className="chat-list-scrollable">
                         {loading ? (
-                            <p style={styles.placeholder}>Loading chats...</p>
+                            <ChatListSkeleton />
                         ) : error ? (
                             <p style={styles.errorText}>{error}</p>
                         ) : chats.length === 0 ? (
@@ -1370,14 +1453,14 @@ function Chat() {
                                             style={styles.searchToggleBtn}
                                             title="Voice Call"
                                         >
-                                            📞
+                                            <Phone size={18} />
                                         </button>
                                         <button
                                             onClick={() => handleCallUser("video")}
                                             style={styles.searchToggleBtn}
                                             title="Video Call"
                                         >
-                                            📹
+                                            <Video size={18} />
                                         </button>
                                     </>
                                 )}
@@ -1387,7 +1470,7 @@ function Chat() {
                                         style={styles.searchToggleBtn}
                                         title="Group Info"
                                     >
-                                        ℹ️
+                                        <Info size={18} />
                                     </button>
                                 )}
                             </div>
@@ -1415,9 +1498,9 @@ function Chat() {
                                     {searchQuery && searchResults.length === 0 && (
                                         <span style={styles.searchCount}>No results</span>
                                     )}
-                                    <button onClick={goToPrevResult} style={styles.searchNavBtn} title="Previous">▲</button>
-                                    <button onClick={goToNextResult} style={styles.searchNavBtn} title="Next">▼</button>
-                                    <button onClick={closeSearch} style={styles.searchNavBtn} title="Close">✕</button>
+                                    <button onClick={goToPrevResult} style={styles.searchNavBtn} title="Previous"><ChevronUp size={14} /></button>
+                                    <button onClick={goToNextResult} style={styles.searchNavBtn} title="Next"><ChevronDown size={14} /></button>
+                                    <button onClick={closeSearch} style={styles.searchNavBtn} title="Close"><X size={14} /></button>
                                 </div>
                             )}
 
@@ -1430,7 +1513,7 @@ function Chat() {
                                             style={styles.pinnedItem}
                                             onClick={() => scrollToMessage(pin._id)}
                                         >
-                                            <span style={styles.pinnedIcon}>📌</span>
+                                            <Pin size={14} style={styles.pinnedIcon} />
                                             <span style={styles.pinnedText}>
                                                 {pin.content?.length > 40
                                                     ? pin.content.substring(0, 40) + "..."
@@ -1441,7 +1524,7 @@ function Chat() {
                                                 style={styles.unpinBtn}
                                                 title="Unpin"
                                             >
-                                                ✕
+                                                <X size={12} />
                                             </button>
                                         </div>
                                     ))}
@@ -1451,7 +1534,7 @@ function Chat() {
                             {/* Messages Area */}
                             <div className="chat-messages-area" style={styles.messagesArea}>
                                 {loadingMessages ? (
-                                    <p style={styles.mainPlaceholder}>Loading messages...</p>
+                                    <MessageListSkeleton />
                                 ) : messages.length === 0 ? (
                                     <div style={styles.emptyMessages}>
                                         <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "14px" }}>
@@ -1721,13 +1804,13 @@ function Chat() {
                                     </span>
                                     <div style={{ display: "flex", gap: "8px" }}>
                                         <button onClick={handleCopySelected} style={styles.selectionBtn}>
-                                            📋 Copy
+                                            <Clipboard size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Copy
                                         </button>
                                         <button onClick={handleBulkDelete} style={styles.selectionBtnDanger}>
-                                            🗑 Delete
+                                            <Trash2 size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Delete
                                         </button>
                                         <button onClick={() => setSelectedMessages([])} style={styles.selectionBtnClear}>
-                                            ✕
+                                            <X size={16} />
                                         </button>
                                     </div>
                                 </div>
@@ -1745,13 +1828,13 @@ function Chat() {
                                                 {replyMessage.content?.length > 50 ? replyMessage.content.substring(0, 50) + "..." : replyMessage.content}
                                             </span>
                                         </div>
-                                        <button onClick={() => setReplyMessage(null)} style={styles.cancelEditBtn}>✕</button>
+                                        <button onClick={() => setReplyMessage(null)} style={styles.cancelEditBtn}><X size={14} /></button>
                                     </div>
                                 )}
                                 {editingMessageId && (
                                     <div style={styles.editBanner}>
                                         <span style={{ fontSize: '12px', color: '#667eea' }}>Editing message...</span>
-                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn}>✕</button>
+                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn}><X size={14} /></button>
                                     </div>
                                 )}
                                 {/* Mention Autocomplete Dropdown */}
@@ -1837,7 +1920,7 @@ function Chat() {
                                                 }}
                                                 title={isRecording ? "Stop & Send Recording" : "Record Voice Message"}
                                             >
-                                                {isRecording ? "⏹️" : "🎤"}
+                                                {isRecording ? <Square size={18} /> : <Mic size={18} />}
                                             </button>
                                         </>
                                     ) : (
@@ -1845,7 +1928,7 @@ function Chat() {
                                             onClick={handleSendMessage}
                                             style={styles.sendBtn}
                                         >
-                                            {editingMessageId ? "✓" : "➤"}
+                                            {editingMessageId ? <Check size={18} /> : <Send size={18} />}
                                         </button>
                                     )}
                                 </div>
@@ -1877,7 +1960,7 @@ function Chat() {
                     ) : (
                         <div style={styles.mainContent}>
                             <div style={styles.emptyState}>
-                                <span style={{ fontSize: "48px" }}>💬</span>
+                                <MessageCircle size={48} style={{ color: "var(--text-muted)" }} />
                                 <h3 style={{ color: "#fff", margin: "16px 0 8px" }}>
                                     Select a chat
                                 </h3>
@@ -1907,7 +1990,7 @@ function Chat() {
                             onClick={() => setPreviewImage(null)}
                             style={styles.imagePreviewClose}
                         >
-                            ✕
+                            <X size={18} />
                         </button>
                         <img
                             src={`http://localhost:5000${previewImage}`}
@@ -1923,7 +2006,7 @@ function Chat() {
                             style={styles.imagePreviewDownload}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            ⬇ Download
+                            <Download size={14} style={{ marginRight: "6px", verticalAlign: "middle" }} />Download
                         </a>
                     </div>
                 )}
@@ -1941,7 +2024,7 @@ function Chat() {
                                         onClick={() => handleForwardMessage(chat._id)}
                                     >
                                         <div style={styles.chatAvatar}>
-                                            {chat.isGroupChat ? "👥" : "👤"}
+                                            {chat.isGroupChat ? <Users size={16} /> : <User size={16} />}
                                         </div>
                                         <span style={{ color: "#fff", flex: 1 }}>{getChatName(chat, user)}</span>
                                     </div>
@@ -1986,13 +2069,13 @@ function Chat() {
                         <div style={{ ...styles.modalContent, maxWidth: "440px", maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
                                 <h3 style={{ margin: 0, color: "#fff" }}>Group Info</h3>
-                                <button onClick={() => setShowGroupInfo(false)} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.6)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer" }}>✕</button>
+                                <button onClick={() => setShowGroupInfo(false)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={16} /></button>
                             </div>
 
                             {/* Group Name & Avatar */}
                             <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
                                 <div style={{ width: "60px", height: "60px", borderRadius: "18px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "28px", flexShrink: 0 }}>
-                                    👥
+                                    <Users size={28} />
                                 </div>
                                 <div>
                                     <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "18px" }}>{selectedChat.name}</h4>
@@ -2058,7 +2141,7 @@ function Chat() {
                                 onClick={handleLeaveGroup}
                                 style={{ width: "100%", padding: "14px", borderRadius: "12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontWeight: 600, fontSize: "15px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
                             >
-                                🚪 Leave Group
+                                <LogOut size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} />Leave Group
                             </button>
                         </div>
                     </div>
@@ -2070,7 +2153,7 @@ function Chat() {
                         <div style={{ ...styles.modalContent, maxWidth: "420px", maxHeight: "70vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                                 <h3 style={{ margin: 0, color: "#fff" }}>Add Member</h3>
-                                <button onClick={() => setGroupToAddUsers(null)} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.6)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer" }}>✕</button>
+                                <button onClick={() => setGroupToAddUsers(null)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={16} /></button>
                             </div>
                             <AddMemberList chatId={groupToAddUsers} existingParticipants={selectedChat?.participants || []} onAdd={handleUserAddedToGroup} />
                         </div>
@@ -2081,7 +2164,7 @@ function Chat() {
                     <div style={styles.modalOverlay}>
                         <div style={{ ...styles.modalContent, textAlign: "center", padding: "30px", maxWidth: "300px" }}>
                             <div style={{ fontSize: "40px", marginBottom: "16px", animation: "pulse 1.5s infinite" }}>
-                                {incomingCall.callType === "video" ? "📹" : "📞"}
+                                {incomingCall.callType === "video" ? <Video size={40} /> : <Phone size={40} />}
                             </div>
                             <h3 style={{ margin: "0 0 8px", color: "#fff" }}>Incoming {incomingCall.callType === "video" ? "Video" : "Voice"} Call</h3>
                             <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
@@ -2121,7 +2204,7 @@ function Chat() {
                                     margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center",
                                     fontSize: "24px", color: "#fff", animation: "pulse 2s infinite"
                                 }}>
-                                    📞
+                                    <Phone size={24} />
                                 </div>
                             )}
                             <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "16px" }}>
@@ -2994,7 +3077,7 @@ const styles = {
 };
 
 // ─── Inline Add Member Component ───
-function AddMemberList({ chatId, existingParticipants, onAdd }) {
+function AddMemberList({ existingParticipants, onAdd }) {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(null);

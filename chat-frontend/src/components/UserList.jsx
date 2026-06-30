@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
+import { X, Users, Check } from "lucide-react";
 import API from "../services/api";
+import { UserListSkeleton } from "./LoadingSkeletons";
+import { useToast } from "../context/toast";
 
 function UserList({ onClose, onChatCreated }) {
     const [users, setUsers] = useState([]);
@@ -12,10 +15,11 @@ function UserList({ onClose, onChatCreated }) {
     const [selectedUsers, setSelectedUsers] = useState([]);
 
     const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const toast = useToast();
 
     useEffect(() => {
         fetchUsers();
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fetchUsers = async () => {
         try {
@@ -26,8 +30,11 @@ function UserList({ onClose, onChatCreated }) {
                 (u) => u._id !== currentUser._id
             );
             setUsers(filtered);
-        } catch (err) {
+        } catch {
             setError("Failed to load users");
+            toast.error("Failed to load users. Please try again.", {
+                title: "Users Unavailable",
+            });
         } finally {
             setLoading(false);
         }
@@ -43,10 +50,15 @@ function UserList({ onClose, onChatCreated }) {
 
         try {
             setCreating(userId);
+            setError("");
             const res = await API.post("/chats", { userId });
+            toast.success("Chat created successfully.", { title: "New Chat Ready" });
             onChatCreated(res.data.data);
-        } catch (err) {
+        } catch {
             setError("Failed to create chat");
+            toast.error("Failed to create chat. Please try again.", {
+                title: "Chat Creation Failed",
+            });
         } finally {
             setCreating(null);
         }
@@ -55,18 +67,28 @@ function UserList({ onClose, onChatCreated }) {
     const handleCreateGroup = async () => {
         if (!groupName.trim() || selectedUsers.length < 1) {
             setError("Group name and at least 1 other user required.");
+            toast.warning("Add a group name and select at least one user.", {
+                title: "Group Details Missing",
+            });
             return;
         }
 
         try {
             setCreating("group");
+            setError("");
             const res = await API.post("/chats/group", {
                 name: groupName,
                 participants: selectedUsers
             });
+            toast.success("Group chat created successfully.", {
+                title: "Group Created",
+            });
             onChatCreated(res.data.data);
-        } catch (err) {
+        } catch {
             setError("Failed to create group");
+            toast.error("Failed to create group. Please try again.", {
+                title: "Group Creation Failed",
+            });
         } finally {
             setCreating(null);
         }
@@ -81,7 +103,7 @@ function UserList({ onClose, onChatCreated }) {
                 <div style={styles.header}>
                     <h3 style={styles.title}>{groupMode ? "New Group Chat" : "New Chat"}</h3>
                     <button onClick={onClose} style={styles.closeBtn}>
-                        ✕
+                        <X size={16} />
                     </button>
                 </div>
 
@@ -92,7 +114,7 @@ function UserList({ onClose, onChatCreated }) {
                             style={styles.newGroupBtn}
                             onClick={() => setGroupMode(true)}
                         >
-                            <div style={styles.newGroupIcon}>👥</div>
+                            <div style={styles.newGroupIcon}><Users size={18} /></div>
                             <span style={styles.newGroupText}>New Group Chat</span>
                         </button>
                     )}
@@ -110,7 +132,7 @@ function UserList({ onClose, onChatCreated }) {
                     )}
 
                     {loading ? (
-                        <p style={styles.placeholder}>Loading users...</p>
+                        <UserListSkeleton />
                     ) : error ? (
                         <p style={styles.errorText}>{error}</p>
                     ) : users.length === 0 ? (
@@ -141,7 +163,7 @@ function UserList({ onClose, onChatCreated }) {
                                         background: selectedUsers.includes(u._id) ? "var(--accent-gradient-start)" : "transparent",
                                         borderColor: selectedUsers.includes(u._id) ? "var(--accent-gradient-start)" : "var(--border-default)"
                                     }}>
-                                        {selectedUsers.includes(u._id) && "✓"}
+                                        {selectedUsers.includes(u._id) && <Check size={12} />}
                                     </div>
                                 )}
                                 {!groupMode && (
