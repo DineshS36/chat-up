@@ -28,11 +28,11 @@ const InviteModal = ({ community, onClose }) => {
     };
 
     return (
-        <div style={styles.overlay} onClick={onClose}>
+        <div style={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label={`Invite to ${community.name}`} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
             <div style={styles.modal} onClick={e => e.stopPropagation()}>
                 <div style={styles.header}>
                     <h3 style={{ margin: 0 }}>Invite friends to {community.name}</h3>
-                    <button style={styles.closeBtn} onClick={onClose}><X size={16} /></button>
+                    <button style={styles.closeBtn} onClick={onClose} aria-label="Close invite modal"><X size={16} aria-hidden="true" /></button>
                 </div>
 
                 <div style={styles.body}>

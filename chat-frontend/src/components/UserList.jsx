@@ -97,13 +97,13 @@ function UserList({ onClose, onChatCreated }) {
     const getInitial = (name) => (name ? name.charAt(0).toUpperCase() : "?");
 
     return (
-        <div style={styles.overlay} onClick={onClose}>
+        <div style={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label={groupMode ? "New Group Chat" : "New Chat"} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div style={styles.header}>
                     <h3 style={styles.title}>{groupMode ? "New Group Chat" : "New Chat"}</h3>
-                    <button onClick={onClose} style={styles.closeBtn}>
-                        <X size={16} />
+                    <button onClick={onClose} style={styles.closeBtn} aria-label="Close user list">
+                        <X size={16} aria-hidden="true" />
                     </button>
                 </div>
 
@@ -134,14 +134,24 @@ function UserList({ onClose, onChatCreated }) {
                     {loading ? (
                         <UserListSkeleton />
                     ) : error ? (
-                        <p style={styles.errorText}>{error}</p>
+                        <p style={styles.errorText} role="alert">{error}</p>
                     ) : users.length === 0 ? (
                         <p style={styles.placeholder}>No other users found</p>
                     ) : (
-                        users.map((u) => (
-                            <div
-                                key={u._id}
-                                onClick={() => handleUserClick(u._id)}
+                        <div role="listbox" aria-label="Available users" style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            {users.map((u) => (
+                                <div
+                                    key={u._id}
+                                    onClick={() => handleUserClick(u._id)}
+                                    role="option"
+                                    aria-selected={selectedUsers.includes(u._id)}
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            handleUserClick(u._id);
+                                        }
+                                    }}
                                 style={{
                                     ...styles.userItem,
                                     opacity: creating === u._id ? 0.5 : 1,
@@ -177,8 +187,14 @@ function UserList({ onClose, onChatCreated }) {
                                         }}
                                     />
                                 )}
+                                {creating === u._id && (
+                                    <div style={styles.creatingSpinner}>
+                                        <div className="spinner"></div>
+                                    </div>
+                                )}
                             </div>
-                        ))
+                        ))}
+                        </div>
                     )}
                 </div>
                 {groupMode && (

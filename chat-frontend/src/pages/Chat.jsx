@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot } from "lucide-react";
+import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot, Reply, Forward, SmilePlus, FileText, Pencil, Clock } from "lucide-react";
 import API from "../services/api";
 import UserList from "../components/UserList";
 import socket from "../socket/socket";
@@ -1303,6 +1303,27 @@ function Chat() {
         }
     }, [selectedChat?.pinnedMessages]);
 
+    // Emoji-to-label map for accessible reaction buttons
+    const emojiLabels = { "👍": "thumbs up", "❤️": "heart", "😂": "laugh", "😮": "surprised", "😢": "sad" };
+
+    // Keyboard handler for chat list arrow navigation
+    const handleChatListKeyDown = (e, chatId, index) => {
+        const items = e.currentTarget.parentElement?.querySelectorAll('[role="option"]');
+        if (!items) return;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            const next = items[index + 1];
+            if (next) next.focus();
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            const prev = items[index - 1];
+            if (prev) prev.focus();
+        } else if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedChatId(chatId);
+        }
+    };
+
     return (
         <>
             <style>{`
@@ -1328,54 +1349,60 @@ function Chat() {
                     to { opacity: 1; transform: translateY(0); }
                 }
             `}</style>
+            <a href="#chat-input" className="skip-link">Skip to message input</a>
             <div className="chat-container" style={styles.container}>
                 {/* ─── Sidebar ─── */}
-                <div className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar}>
-                    <div style={styles.sidebarHeader}>
-                        <h2 style={styles.sidebarTitle}><MessageCircle size={20} style={{ verticalAlign: "middle", marginRight: "6px" }} />Chats</h2>
+                <aside className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar} aria-label="Conversations">
+                    <header style={styles.sidebarHeader}>
+                        <h2 style={styles.sidebarTitle}><MessageCircle size={20} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: "6px" }} />Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
                             <button
                                 onClick={() => navigate("/status")}
                                 style={{ ...styles.newChatBtn, background: "var(--accent-success-bg)", color: "var(--accent-success)", borderColor: "var(--accent-success-border)" }}
-                                title="Status"
+                                aria-label="Go to Status"
                             >
-                                <CircleDot size={18} />
+                                <CircleDot size={18} aria-hidden="true" />
                             </button>
                             <button
                                 onClick={() => setShowUserList(true)}
                                 style={styles.newChatBtn}
-                                title="New Chat"
+                                aria-label="Start new chat"
                             >
-                                <Plus size={18} />
+                                <Plus size={18} aria-hidden="true" />
                             </button>
-                            <button onClick={handleLogout} style={styles.logoutBtn} title="Logout">
-                                <LogOut size={16} />
+                            <button onClick={handleLogout} style={styles.logoutBtn} aria-label="Log out">
+                                <LogOut size={16} aria-hidden="true" />
                             </button>
                         </div>
-                    </div>
+                    </header>
 
-                    <div className="chat-list-scrollable">
+                    <ul className="chat-list-scrollable" role="listbox" aria-label="Chat list">
                         {loading ? (
                             <ChatListSkeleton />
                         ) : error ? (
-                            <p style={styles.errorText}>{error}</p>
+                            <p role="alert" style={styles.errorText}>{error}</p>
                         ) : chats.length === 0 ? (
                             <p style={styles.placeholder}>No chats yet</p>
                         ) : (
-                            chats.map((chat) => {
+                            chats.map((chat, index) => {
                                 const isSelected = chat._id === selectedChatId;
                                 const unread = chat.unreadCounts?.[user._id] || 0;
 
                                 return (
-                                    <div
+                                    <li
                                         key={chat._id}
+                                        role="option"
+                                        tabIndex={0}
+                                        aria-selected={isSelected}
+                                        aria-label={`${getChatName(chat, user)}${unread > 0 ? `, ${unread} unread messages` : ''}`}
                                         onClick={() => setSelectedChatId(chat._id)}
+                                        onKeyDown={(e) => handleChatListKeyDown(e, chat._id, index)}
                                         style={{
                                             ...styles.chatItem,
                                             ...(isSelected ? styles.chatItemActive : {}),
                                         }}
                                     >
-                                        <div style={styles.avatar}>{getInitial(chat, user)}</div>
+                                        <div style={styles.avatar} aria-hidden="true">{getInitial(chat, user)}</div>
                                         <div style={styles.chatInfo}>
                                             <div style={styles.chatTopRow}>
                                                 <span style={styles.chatName}>{getChatName(chat, user)}</span>
@@ -1388,34 +1415,34 @@ function Chat() {
                                                     {chat.lastMessage?.content || "No messages yet"}
                                                 </span>
                                                 {unread > 0 && (
-                                                    <span style={styles.badge}>{unread}</span>
+                                                    <span style={styles.badge} aria-label={`${unread} unread`}>{unread}</span>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
+                                    </li>
                                 );
                             })
                         )}
-                    </div>
-                </div>
+                    </ul>
+                </aside>
 
                 {/* ─── Main Area ─── */}
-                <div className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main}>
+                <main className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main} aria-label="Chat window">
                     {selectedChat ? (
                         <>
                             {/* Chat Header */}
-                            <div className="chat-header" style={styles.chatHeader}>
-                                <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)}>←</button>
-                                <div style={styles.avatar}>{getInitial(selectedChat, user)}</div>
+                            <header className="chat-header" style={styles.chatHeader}>
+                                <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)} aria-label="Back to chat list">←</button>
+                                <div style={styles.avatar} aria-hidden="true">{getInitial(selectedChat, user)}</div>
                                 <div style={{ flex: 1 }}>
                                     <h3 style={styles.chatHeaderName}>
                                         {getChatName(selectedChat, user)}
                                     </h3>
                                     {!isTyping && getOtherUserPresence(selectedChat)}
                                     {isTyping && (
-                                        <span style={styles.typingIndicator}>
+                                        <span style={styles.typingIndicator} aria-live="polite" aria-label="User is typing">
                                             typing
-                                            <span style={styles.typingDots}>
+                                            <span style={styles.typingDots} aria-hidden="true">
                                                 <span style={{ ...styles.dot, animationDelay: "0s" }}>.</span>
                                                 <span style={{ ...styles.dot, animationDelay: "0.2s" }}>.</span>
                                                 <span style={{ ...styles.dot, animationDelay: "0.4s" }}>.</span>
@@ -1426,22 +1453,21 @@ function Chat() {
                                 <button
                                     onClick={() => showSearch ? closeSearch() : setShowSearch(true)}
                                     style={styles.searchToggleBtn}
-                                    title="Search messages"
+                                    aria-label="Search messages"
                                 >
-                                    🔍
+                                    <Search size={18} aria-hidden="true" />
                                 </button>
-                                {/* Export Backup Dropdown Trigger (Basic implementation as 2 buttons for simplicity without breaking logic) */}
                                 <button
                                     onClick={() => handleExportChat('txt')}
                                     style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
-                                    title="Export TXT"
+                                    aria-label="Export chat as TXT"
                                 >
                                     TXT
                                 </button>
                                 <button
                                     onClick={() => handleExportChat('json')}
                                     style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
-                                    title="Export JSON"
+                                    aria-label="Export chat as JSON"
                                 >
                                     JSON
                                 </button>
@@ -1451,16 +1477,16 @@ function Chat() {
                                         <button
                                             onClick={() => handleCallUser("audio")}
                                             style={styles.searchToggleBtn}
-                                            title="Voice Call"
+                                            aria-label="Start voice call"
                                         >
-                                            <Phone size={18} />
+                                            <Phone size={18} aria-hidden="true" />
                                         </button>
                                         <button
                                             onClick={() => handleCallUser("video")}
                                             style={styles.searchToggleBtn}
-                                            title="Video Call"
+                                            aria-label="Start video call"
                                         >
-                                            <Video size={18} />
+                                            <Video size={18} aria-hidden="true" />
                                         </button>
                                     </>
                                 )}
@@ -1468,12 +1494,12 @@ function Chat() {
                                     <button
                                         onClick={() => setShowGroupInfo(true)}
                                         style={styles.searchToggleBtn}
-                                        title="Group Info"
+                                        aria-label="View group info"
                                     >
-                                        <Info size={18} />
+                                        <Info size={18} aria-hidden="true" />
                                     </button>
                                 )}
-                            </div>
+                            </header>
 
                             {/* Search Bar */}
                             {showSearch && (
@@ -1532,15 +1558,15 @@ function Chat() {
                             )}
 
                             {/* Messages Area */}
-                            <div className="chat-messages-area" style={styles.messagesArea}>
+                            <ul className="chat-messages-area" role="log" aria-live="polite" aria-label="Messages" style={styles.messagesArea}>
                                 {loadingMessages ? (
                                     <MessageListSkeleton />
                                 ) : messages.length === 0 ? (
-                                    <div style={styles.emptyMessages}>
+                                    <li style={styles.emptyMessages}>
                                         <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "14px" }}>
-                                            No messages yet. Say hello! 👋
+                                            No messages yet. Say hello!
                                         </p>
-                                    </div>
+                                    </li>
                                 ) : (
                                     messages.map((msg, index) => {
                                         const isOwn =
@@ -1574,7 +1600,7 @@ function Chat() {
 
                                         if (msg.type === "system") {
                                             return (
-                                                <div key={msg._id} style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
+                                                <li key={msg._id} style={{ display: "flex", justifyContent: "center", margin: "12px 0" }} aria-label="System message">
                                                     <div style={{
                                                         background: "rgba(255,255,255,0.05)",
                                                         padding: "6px 16px",
@@ -1586,12 +1612,12 @@ function Chat() {
                                                     }}>
                                                         {msg.content}
                                                     </div>
-                                                </div>
+                                                </li>
                                             );
                                         }
 
                                         return (
-                                            <div
+                                            <li
                                                 key={msg._id}
                                                 ref={(el) => { messageRefs.current[msg._id] = el; }}
                                                 className={`msg-row ${isOwn ? 'msg-own' : 'msg-other'}`}
@@ -1609,27 +1635,27 @@ function Chat() {
                                                 }}
                                             >
                                                 {!msg.deleted && (
-                                                    <div className="msg-actions" style={styles.messageActions}>
+                                                    <div className="msg-actions" style={styles.messageActions} role="toolbar" aria-label="Message actions">
                                                         <button
                                                             onClick={() => setReplyMessage(msg)}
                                                             style={styles.actionBtn}
-                                                            title="Reply"
+                                                            aria-label="Reply to message"
                                                         >
-                                                            ↩
+                                                            <Reply size={14} aria-hidden="true" />
                                                         </button>
                                                         <button
                                                             onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg._id ? null : msg._id)}
                                                             style={styles.actionBtn}
-                                                            title="React"
+                                                            aria-label="Add reaction"
                                                         >
-                                                            😊
+                                                            <SmilePlus size={14} aria-hidden="true" />
                                                         </button>
                                                         <button
                                                             onClick={() => setForwardMessageId(msg._id)}
                                                             style={styles.actionBtn}
-                                                            title="Forward message"
+                                                            aria-label="Forward message"
                                                         >
-                                                            ➡️
+                                                            <Forward size={14} aria-hidden="true" />
                                                         </button>
                                                         <button
                                                             onClick={() => {
@@ -1640,37 +1666,38 @@ function Chat() {
                                                                 ...styles.actionBtn,
                                                                 ...(pinnedMessages.some(p => p._id === msg._id) ? { color: '#facc15' } : {}),
                                                             }}
-                                                            title={pinnedMessages.some(p => p._id === msg._id) ? "Unpin" : "Pin"}
+                                                            aria-label={pinnedMessages.some(p => p._id === msg._id) ? "Unpin message" : "Pin message"}
                                                         >
-                                                            📌
+                                                            <Pin size={14} aria-hidden="true" />
                                                         </button>
                                                         {isOwn && (
                                                             <>
                                                                 <button
                                                                     onClick={() => handleEditClick(msg)}
                                                                     style={styles.actionBtn}
-                                                                    title="Edit message"
+                                                                    aria-label="Edit message"
                                                                 >
-                                                                    ✎
+                                                                    <Pencil size={14} aria-hidden="true" />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteClick(msg._id)}
                                                                     style={styles.actionBtn}
-                                                                    title="Delete message"
+                                                                    aria-label="Delete message"
                                                                 >
-                                                                    🗑
+                                                                    <Trash2 size={14} aria-hidden="true" />
                                                                 </button>
                                                             </>
                                                         )}
                                                     </div>
                                                 )}
                                                 {emojiPickerMsgId === msg._id && (
-                                                    <div style={styles.emojiPicker}>
+                                                    <div style={styles.emojiPicker} role="toolbar" aria-label="Emoji reactions" onKeyDown={(e) => { if (e.key === "Escape") setEmojiPickerMsgId(null); }}>
                                                         {["👍", "❤️", "😂", "😮", "😢"].map((em) => (
                                                             <button
                                                                 key={em}
                                                                 onClick={() => handleReaction(msg._id, em)}
                                                                 style={styles.emojiBtn}
+                                                                aria-label={`React with ${emojiLabels[em] || em} emoji`}
                                                             >
                                                                 {em}
                                                             </button>
@@ -1735,13 +1762,13 @@ function Chat() {
                                                                         style={styles.fileLink}
                                                                         download
                                                                     >
-                                                                        <span style={styles.fileIcon}>📄</span>
+                                                                        <span style={styles.fileIcon} aria-hidden="true"><FileText size={16} /></span>
                                                                         <span style={styles.fileName}>{msg.fileName || "File"}</span>
                                                                     </a>
                                                                 ) : msg.type === "audio" ? (
                                                                     <div style={styles.audioContainer}>
-                                                                        <span style={styles.audioIcon}>🎤</span>
-                                                                        <audio controls style={styles.audioPlayer}>
+                                                                        <Mic size={16} aria-hidden="true" style={styles.audioIcon} />
+                                                                        <audio controls style={styles.audioPlayer} aria-label="Voice message audio player">
                                                                             <source src={`${BACKEND_URL}${msg.content}`} />
                                                                         </audio>
                                                                     </div>
@@ -1751,7 +1778,7 @@ function Chat() {
                                                         <div style={styles.messageFooter}>
                                                             {msg.scheduled && (
                                                                 <div style={{ fontSize: "11px", color: isOwn ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)", marginBottom: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
-                                                                    <span role="img" aria-label="clock">🕒</span> Scheduled for {new Date(msg.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    <Clock size={12} aria-hidden="true" /> Scheduled for {new Date(msg.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </div>
                                                             )}
                                                             <span style={styles.messageTime}>
@@ -1782,6 +1809,7 @@ function Chat() {
                                                                             (r) => r.emoji === emoji && (r.userId === user._id || r.userId?.toString() === user._id)
                                                                         ) ? styles.reactionChipActive : {}),
                                                                     }}
+                                                                    aria-label={`Toggle ${emojiLabels[emoji] || emoji} reaction, ${count} ${count === 1 ? 'reaction' : 'reactions'}`}
                                                                 >
                                                                     {emoji} {count > 1 ? count : ""}
                                                                 </button>
@@ -1789,12 +1817,12 @@ function Chat() {
                                                         </div>
                                                     )}
                                                 </div>
-                                            </div>
+                                            </li>
                                         );
                                     })
                                 )}
-                                <div ref={messagesEndRef} />
-                            </div>
+                                <li ref={messagesEndRef} aria-hidden="true" />
+                            </ul>
 
                             {/* Selection Toolbar */}
                             {selectedMessages.length > 0 && (
@@ -1828,13 +1856,13 @@ function Chat() {
                                                 {replyMessage.content?.length > 50 ? replyMessage.content.substring(0, 50) + "..." : replyMessage.content}
                                             </span>
                                         </div>
-                                        <button onClick={() => setReplyMessage(null)} style={styles.cancelEditBtn}><X size={14} /></button>
+                                        <button onClick={() => setReplyMessage(null)} style={styles.cancelEditBtn} aria-label="Cancel reply"><X size={14} aria-hidden="true" /></button>
                                     </div>
                                 )}
                                 {editingMessageId && (
                                     <div style={styles.editBanner}>
                                         <span style={{ fontSize: '12px', color: '#667eea' }}>Editing message...</span>
-                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn}><X size={14} /></button>
+                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn} aria-label="Cancel edit"><X size={14} aria-hidden="true" /></button>
                                     </div>
                                 )}
                                 {/* Mention Autocomplete Dropdown */}
@@ -1870,10 +1898,10 @@ function Chat() {
                                         ))}
                                     </div>
                                 )}
-                                <div className="chat-input-bar" style={styles.inputBar}>
+                                <form className="chat-input-bar" style={styles.inputBar} id="chat-input" onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}>
                                     {isRecording ? (
-                                        <div style={styles.recordingBanner}>
-                                            <div style={styles.recordingIndicator}></div>
+                                        <div style={styles.recordingBanner} aria-live="assertive">
+                                            <div style={styles.recordingIndicator} aria-hidden="true"></div>
                                             <span style={styles.recordingTimer}>{formatDuration(recordingDuration)}</span>
                                             <span style={styles.recordingText}>Recording...</span>
                                         </div>
@@ -1884,13 +1912,16 @@ function Chat() {
                                                 ref={fileInputRef}
                                                 onChange={handleFileUpload}
                                                 style={{ display: 'none' }}
+                                                aria-hidden="true"
+                                                tabIndex={-1}
                                             />
                                             <button
+                                                type="button"
                                                 onClick={() => fileInputRef.current?.click()}
                                                 style={styles.attachBtn}
-                                                title="Attach file"
+                                                aria-label="Attach file"
                                             >
-                                                📎
+                                                <Paperclip size={18} aria-hidden="true" />
                                             </button>
                                             <input
                                                 className="chat-input-field"
@@ -1899,6 +1930,7 @@ function Chat() {
                                                 onKeyDown={handleKeyDown}
                                                 placeholder="Type a message..."
                                                 autoFocus={!!editingMessageId}
+                                                aria-label="Message input"
                                             />
                                         </>
                                     )}
@@ -1906,32 +1938,35 @@ function Chat() {
                                     {!messageText.trim() && !editingMessageId ? (
                                         <>
                                             <button
+                                                type="button"
                                                 onClick={() => setShowSchedulePicker(!showSchedulePicker)}
                                                 style={{ ...styles.attachBtn, fontSize: '18px', padding: '6px 4px' }}
-                                                title="Schedule Message"
+                                                aria-label="Schedule message"
                                             >
-                                                🕒
+                                                <Clock size={18} aria-hidden="true" />
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={isRecording ? stopRecording : startRecording}
                                                 style={{
                                                     ...styles.micBtn,
                                                     ...(isRecording ? styles.micBtnActive : {})
                                                 }}
-                                                title={isRecording ? "Stop & Send Recording" : "Record Voice Message"}
+                                                aria-label={isRecording ? "Stop and send recording" : "Record voice message"}
                                             >
-                                                {isRecording ? <Square size={18} /> : <Mic size={18} />}
+                                                {isRecording ? <Square size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
                                             </button>
                                         </>
                                     ) : (
                                         <button
-                                            onClick={handleSendMessage}
+                                            type="submit"
                                             style={styles.sendBtn}
+                                            aria-label={editingMessageId ? "Save edited message" : "Send message"}
                                         >
-                                            {editingMessageId ? <Check size={18} /> : <Send size={18} />}
+                                            {editingMessageId ? <Check size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
                                         </button>
                                     )}
-                                </div>
+                                </form>
                             </div>
 
                             {/* Schedule Picker Bar */}
@@ -1970,7 +2005,7 @@ function Chat() {
                             </div>
                         </div>
                     )}
-                </div>
+                </main>
 
                 {/* UserList Modal */}
                 {showUserList && (
@@ -1985,10 +2020,15 @@ function Chat() {
                     <div
                         style={styles.imagePreviewOverlay}
                         onClick={() => setPreviewImage(null)}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Image preview"
+                        onKeyDown={(e) => { if (e.key === "Escape") setPreviewImage(null); }}
                     >
                         <button
                             onClick={() => setPreviewImage(null)}
                             style={styles.imagePreviewClose}
+                            aria-label="Close preview"
                         >
                             <X size={18} />
                         </button>
@@ -2013,7 +2053,7 @@ function Chat() {
 
                 {/* Forward Message Modal */}
                 {forwardMessageId && (
-                    <div style={styles.modalOverlay}>
+                    <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-label="Forward message" onKeyDown={(e) => { if (e.key === "Escape") setForwardMessageId(null); }}>
                         <div style={styles.modalContent}>
                             <h3 style={{ margin: "0 0 16px" }}>Forward Message to...</h3>
                             <div style={styles.forwardChatList}>
@@ -2041,20 +2081,21 @@ function Chat() {
 
                 {/* Delete Confirmation Modal */}
                 {messageToDelete && (
-                    <div style={styles.modalOverlay}>
+                    <div style={styles.modalOverlay} role="alertdialog" aria-modal="true" aria-label="Delete message confirmation" onKeyDown={(e) => { if (e.key === "Escape") cancelDelete(); }}>
                         <div style={styles.modalContent}>
                             <h3 style={{ margin: "0 0 16px" }}>Delete Message</h3>
                             <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
                                 Are you sure you want to delete this message? This action cannot be undone.
                             </p>
                             <div style={styles.modalActions}>
-                                <button onClick={cancelDelete} style={styles.modalBtn}>
+                                <button onClick={cancelDelete} style={styles.modalBtn} aria-label="Cancel delete">
                                     Cancel
                                 </button>
                                 <button
                                     onClick={confirmDelete}
                                     style={{ ...styles.modalBtn, ...styles.modalBtnDanger }}
                                     id="confirm-delete-btn"
+                                    aria-label="Confirm delete"
                                 >
                                     Delete
                                 </button>
@@ -2065,11 +2106,11 @@ function Chat() {
 
                 {/* Group Info Modal */}
                 {showGroupInfo && selectedChat?.isGroupChat && (
-                    <div style={styles.modalOverlay} onClick={() => setShowGroupInfo(false)}>
+                    <div style={styles.modalOverlay} onClick={() => setShowGroupInfo(false)} role="dialog" aria-modal="true" aria-label="Group info" onKeyDown={(e) => { if (e.key === "Escape") setShowGroupInfo(false); }}>
                         <div style={{ ...styles.modalContent, maxWidth: "440px", maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
                                 <h3 style={{ margin: 0, color: "#fff" }}>Group Info</h3>
-                                <button onClick={() => setShowGroupInfo(false)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={16} /></button>
+                                <button onClick={() => setShowGroupInfo(false)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Close group info"><X size={16} aria-hidden="true" /></button>
                             </div>
 
                             {/* Group Name & Avatar */}
@@ -2149,11 +2190,11 @@ function Chat() {
 
                 {/* Add Member to Group Modal */}
                 {groupToAddUsers && (
-                    <div style={styles.modalOverlay} onClick={() => setGroupToAddUsers(null)}>
+                    <div style={styles.modalOverlay} onClick={() => setGroupToAddUsers(null)} role="dialog" aria-modal="true" aria-label="Add member to group" onKeyDown={(e) => { if (e.key === "Escape") setGroupToAddUsers(null); }}>
                         <div style={{ ...styles.modalContent, maxWidth: "420px", maxHeight: "70vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                                 <h3 style={{ margin: 0, color: "#fff" }}>Add Member</h3>
-                                <button onClick={() => setGroupToAddUsers(null)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={16} /></button>
+                                <button onClick={() => setGroupToAddUsers(null)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Close add member"><X size={16} aria-hidden="true" /></button>
                             </div>
                             <AddMemberList chatId={groupToAddUsers} existingParticipants={selectedChat?.participants || []} onAdd={handleUserAddedToGroup} />
                         </div>

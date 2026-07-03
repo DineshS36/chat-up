@@ -177,6 +177,12 @@ body {
   min-height: 100vh;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
@@ -200,9 +206,150 @@ button:active {
   transform: scale(0.96);
   transition: transform 0.05s;
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+
+button:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="option"]:focus-visible,
+[tabindex]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--border-focus-glow);
+}
+
+/* ── Screen-reader-only utility ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Skip-to-content link ── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-primary);
+  color: var(--bg-space);
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-weight: var(--fw-semibold);
+  z-index: 10000;
+  transition: top var(--transition-smooth);
+}
+.skip-link:focus {
+  top: var(--space-sm);
+}
+
+/* ── Listbox role keyboard navigation ── */
+[role="listbox"] {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+[role="option"] {
+  list-style: none;
+}
+
+[role="option"]:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+  background: var(--bg-surface-hover);
+}
+
+[role="option"][aria-selected="true"] {
+  background: var(--bg-surface-active);
+}
+
+/* ── Audio player accessibility ── */
+audio:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
+/* ── Chat message log ── */
+[role="log"] {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.interactive-lift,
+.interactive-scale,
+.interactive-soft,
+.modal-pop {
+  transition:
+    transform var(--transition-smooth),
+    box-shadow var(--transition-smooth),
+    background-color var(--transition-smooth),
+    border-color var(--transition-smooth),
+    opacity var(--transition-smooth),
+    filter var(--transition-smooth);
+}
+
+.interactive-lift:hover,
+.interactive-lift:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.interactive-scale:hover,
+.interactive-scale:focus-visible {
+  transform: scale(1.03);
+}
+
+.interactive-soft:hover,
+.interactive-soft:focus-visible {
+  background-color: var(--bg-surface-hover);
+}
+
+.modal-pop {
+  animation: modalPopIn 0.2s ease-out;
+}
+
+.focus-ring:hover {
+  border-color: var(--border-focus) !important;
+}
+
+@keyframes modalPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes subtleFloatIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* =========================================
@@ -268,6 +415,15 @@ body, html, #root {
   background: var(--bg-surface-hover);
 }
 
+.chat-list-scrollable > [role="button"] {
+  outline: none;
+}
+
+.chat-list-scrollable > [role="button"]:hover,
+.chat-list-scrollable > [role="button"]:focus-visible {
+  background: var(--bg-surface-hover);
+}
+
 /* =========================================
    3b. MESSAGE ROW LAYOUT
    ========================================= */
@@ -329,6 +485,27 @@ button[title="Unpin"]:hover {
 .msg-row {
   animation: messageAppear 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   opacity: 0; /* Ensures it starts invisible before animation applies */
+}
+
+.auth-card-enter,
+.status-card-enter,
+.panel-enter {
+  animation: subtleFloatIn 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .msg-row {
+    opacity: 1 !important;
+  }
 }
 
 /* =========================================
