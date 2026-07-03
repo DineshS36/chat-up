@@ -620,3 +620,12 @@ button[title="Unpin"]:hover {
     display: none !important;
   }
 }
+  
+/* ÄÄ Error Boundary Fallback ÄÄ */  
+.chat-error-fallback { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; padding: var(--space-xl); background: var(--bg-surface); }  
+.chat-error-content { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 400px; padding: var(--space-2xl); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-2xl); box-shadow: var(--shadow-xl); }  
+.chat-error-icon-wrapper { color: var(--accent-danger); margin-bottom: var(--space-lg); background: var(--accent-danger-bg); padding: var(--space-md); border-radius: 50%; display: flex; align-items: center; justify-content: center; }  
+.chat-error-title { margin: 0 0 var(--space-sm); font-size: var(--fs-heading); color: var(--text-primary); font-weight: var(--fw-bold); }  
+.chat-error-description { margin: 0 0 var(--space-xl); color: var(--text-secondary); font-size: var(--fs-body); line-height: 1.5; }  
+.chat-error-btn { display: inline-flex; items-align: center; justify-content: center; gap: var(--space-sm); background: var(--accent-primary); color: #fff; border: none; padding: var(--space-md) var(--space-xl); border-radius: var(--radius-lg); font-weight: var(--fw-medium); font-size: var(--fs-body); cursor: pointer; transition: background var(--transition-fast), transform var(--transition-fast); }  
+.chat-error-btn:hover { background: var(--accent-primary-dim); transform: translateY(-1px); } 

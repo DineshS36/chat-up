@@ -9,6 +9,7 @@ import { formatDuration, formatLastSeen, formatTime, formatMessageTime } from ".
 import { getChatName, getInitial } from "../utils/chatUtils";
 import { ChatListSkeleton, MessageListSkeleton } from "../components/LoadingSkeletons";
 import { useToast } from "../context/toast";
+import { ErrorBoundary, ChatErrorFallback } from "../components/ErrorBoundary";
 
 function Chat() {
     const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -1558,7 +1559,8 @@ function Chat() {
                             )}
 
                             {/* Messages Area */}
-                            <ul className="chat-messages-area" role="log" aria-live="polite" aria-label="Messages" style={styles.messagesArea}>
+                            <ErrorBoundary fallback={<ChatErrorFallback />}>
+                                <ul className="chat-messages-area" role="log" aria-live="polite" aria-label="Messages" style={styles.messagesArea}>
                                 {loadingMessages ? (
                                     <MessageListSkeleton />
                                 ) : messages.length === 0 ? (
@@ -1823,6 +1825,7 @@ function Chat() {
                                 )}
                                 <li ref={messagesEndRef} aria-hidden="true" />
                             </ul>
+                            </ErrorBoundary>
 
                             {/* Selection Toolbar */}
                             {selectedMessages.length > 0 && (
