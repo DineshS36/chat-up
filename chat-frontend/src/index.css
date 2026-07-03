@@ -512,6 +512,10 @@ button[title="Unpin"]:hover {
    3c. MOBILE MESSAGE ADJUSTMENTS
    ========================================= */
 @media screen and (max-width: 767px) {
+  .mobile-hidden-btn {
+    display: none !important;
+  }
+
   .msg-row .msg-actions {
     gap: 1px !important;
   }
@@ -554,43 +558,118 @@ button[title="Unpin"]:hover {
    ========================================= */
 @media screen and (max-width: 767px) {
   .chat-container {
-    flex-direction: column !important;
+    height: 100dvh !important;
+    overflow: hidden;
   }
 
-  .chat-sidebar, .chat-main {
+  /* Drawer Sidebar */
+  .chat-sidebar {
+    position: fixed !important;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    height: 100dvh !important;
+    width: 85vw !important;
+    max-width: 320px !important;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-right: none !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .chat-sidebar.drawer-open {
+    display: flex !important;
+    transform: translateX(0);
+  }
+
+  .chat-sidebar.drawer-closed {
+    /* Hard hide to strictly prevent flex stealing */
+    display: none !important;
+    transform: translateX(-100%);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    backdrop-filter: blur(4px);
+  }
+
+  /* Main Area strictly taking all space */
+  .chat-main {
     width: 100% !important;
     min-width: 100% !important;
     height: 100dvh !important;
-    border-right: none !important;
+    flex: 1 1 100% !important;
+    margin: 0 !important;
   }
 
-  /* Mobile toggle: hide inactive panel */
-  .mobile-hide,
-  .mobile-hidden {
-    display: none !important;
+  /* Touch Targets */
+  .touch-target,
+  .chat-header button,
+  .msg-actions button,
+  .reaction-picker button,
+  .reaction-chip,
+  .chat-item {
+    min-width: 44px;
+    min-height: 44px;
   }
 
-  .mobile-back-btn {
-    display: block !important;
+  .chat-header button,
+  .msg-actions button,
+  .reaction-picker button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-menu-btn {
+    display: flex !important;
     background: none;
     border: none;
     color: var(--text-primary);
-    font-size: 24px;
-    padding-right: 12px;
     cursor: pointer;
+    margin-right: 8px;
+    padding: 0;
   }
 
+  .mobile-only-header {
+    display: flex !important;
+  }
+  
+  .mobile-hidden-btn {
+    display: none !important;
+  }
+
+  /* Fix squished chat area */
   .chat-messages-area {
-    padding: 12px 12px !important;
+    padding: 12px 10px !important;
+    width: 100% !important;
+    flex: 1 !important;
+    margin: 0 !important;
+  }
+  
+  /* Bubbles can span across screen */
+  .msg-bubble {
+    padding: 10px 14px !important;
+    max-width: 90% !important;
   }
 
   .chat-input-bar {
     padding: 8px 12px calc(8px + env(safe-area-inset-bottom)) !important;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-surface);
+    z-index: 10;
+    width: 100% !important;
   }
 
   .chat-input-field {
     padding: 10px 12px;
-    font-size: 16px; /* prevents iOS zoom on focus */
+    font-size: 16px;
   }
 }
 
@@ -621,7 +700,7 @@ button[title="Unpin"]:hover {
   }
 }
   
-/* ÄÄ Error Boundary Fallback ÄÄ */  
+/* ï¿½ï¿½ Error Boundary Fallback ï¿½ï¿½ */  
 .chat-error-fallback { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; padding: var(--space-xl); background: var(--bg-surface); }  
 .chat-error-content { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 400px; padding: var(--space-2xl); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-2xl); box-shadow: var(--shadow-xl); }  
 .chat-error-icon-wrapper { color: var(--accent-danger); margin-bottom: var(--space-lg); background: var(--accent-danger-bg); padding: var(--space-md); border-radius: 50%; display: flex; align-items: center; justify-content: center; }  
@@ -629,3 +708,33 @@ button[title="Unpin"]:hover {
 .chat-error-description { margin: 0 0 var(--space-xl); color: var(--text-secondary); font-size: var(--fs-body); line-height: 1.5; }  
 .chat-error-btn { display: inline-flex; items-align: center; justify-content: center; gap: var(--space-sm); background: var(--accent-primary); color: #fff; border: none; padding: var(--space-md) var(--space-xl); border-radius: var(--radius-lg); font-weight: var(--fw-medium); font-size: var(--fs-body); cursor: pointer; transition: background var(--transition-fast), transform var(--transition-fast); }  
 .chat-error-btn:hover { background: var(--accent-primary-dim); transform: translateY(-1px); } 
+
+/* =========================================
+   FLEXBOX COLLAPSE FIXES
+   ========================================= */
+.msg-bubble {
+  display: block !important;
+  width: fit-content !important;
+  min-width: 50px !important;
+}
+
+.msg-content {
+  flex-shrink: 0 !important;
+  width: auto !important;
+  white-space: pre-wrap !important;
+}
+
+@media screen and (max-width: 767px) {
+  .msg-bubble {
+    display: block !important;
+    width: fit-content !important;
+    min-width: 50px !important;
+    max-width: 90% !important;
+  }
+  
+  .msg-content {
+    flex-shrink: 0 !important;
+    width: auto !important;
+    white-space: pre-wrap !important;
+  }
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot, Reply, Forward, SmilePlus, FileText, Pencil, Clock } from "lucide-react";
+import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot, Reply, Forward, SmilePlus, FileText, Pencil, Clock, Menu } from "lucide-react";
 import API from "../services/api";
 import UserList from "../components/UserList";
 import socket from "../socket/socket";
@@ -16,6 +16,7 @@ function Chat() {
 
     const [chats, setChats] = useState([]);
     const [selectedChatId, setSelectedChatId] = useState(null);
+    const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showUserList, setShowUserList] = useState(false);
     const [error, setError] = useState("");
@@ -1353,7 +1354,8 @@ function Chat() {
             <a href="#chat-input" className="skip-link">Skip to message input</a>
             <div className="chat-container" style={styles.container}>
                 {/* ─── Sidebar ─── */}
-                <aside className={`chat-sidebar ${selectedChatId ? 'mobile-hidden' : ''}`} style={styles.sidebar} aria-label="Conversations">
+                {isMobileDrawerOpen && <div className="sidebar-backdrop" onClick={() => setIsMobileDrawerOpen(false)} aria-hidden="true" />}
+                <aside className={`chat-sidebar ${isMobileDrawerOpen ? 'drawer-open' : 'drawer-closed'}`} style={styles.sidebar} aria-label="Conversations">
                     <header style={styles.sidebarHeader}>
                         <h2 style={styles.sidebarTitle}><MessageCircle size={20} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: "6px" }} />Chats</h2>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1396,7 +1398,7 @@ function Chat() {
                                         tabIndex={0}
                                         aria-selected={isSelected}
                                         aria-label={`${getChatName(chat, user)}${unread > 0 ? `, ${unread} unread messages` : ''}`}
-                                        onClick={() => setSelectedChatId(chat._id)}
+                                        onClick={() => { setSelectedChatId(chat._id); setIsMobileDrawerOpen(false); }}
                                         onKeyDown={(e) => handleChatListKeyDown(e, chat._id, index)}
                                         style={{
                                             ...styles.chatItem,
@@ -1428,12 +1430,12 @@ function Chat() {
                 </aside>
 
                 {/* ─── Main Area ─── */}
-                <main className={`chat-main ${!selectedChatId ? 'mobile-hidden' : ''}`} style={styles.main} aria-label="Chat window">
+                <main className="chat-main" style={styles.main} aria-label="Chat window">
                     {selectedChat ? (
                         <>
                             {/* Chat Header */}
                             <header className="chat-header" style={styles.chatHeader}>
-                                <button className="mobile-back-btn" onClick={() => setSelectedChatId(null)} aria-label="Back to chat list">←</button>
+                                <button className="mobile-menu-btn touch-target" onClick={() => setIsMobileDrawerOpen(true)} aria-label="Open menu"><Menu size={24} aria-hidden="true" /></button>
                                 <div style={styles.avatar} aria-hidden="true">{getInitial(selectedChat, user)}</div>
                                 <div style={{ flex: 1 }}>
                                     <h3 style={styles.chatHeaderName}>
@@ -1460,6 +1462,7 @@ function Chat() {
                                 </button>
                                 <button
                                     onClick={() => handleExportChat('txt')}
+                                    className="mobile-hidden-btn"
                                     style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
                                     aria-label="Export chat as TXT"
                                 >
@@ -1467,6 +1470,7 @@ function Chat() {
                                 </button>
                                 <button
                                     onClick={() => handleExportChat('json')}
+                                    className="mobile-hidden-btn"
                                     style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
                                     aria-label="Export chat as JSON"
                                 >
@@ -1708,6 +1712,7 @@ function Chat() {
                                                 )}
                                                 <div style={styles.messageContainer}>
                                                     <div
+                                                        className="msg-bubble"
                                                         style={{
                                                             ...styles.messageBubble,
                                                             ...(isOwn
@@ -1744,7 +1749,7 @@ function Chat() {
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <p style={{
+                                                        <div className="msg-content" style={{
                                                             ...styles.messageContent,
                                                             ...(msg.deleted ? { fontStyle: "italic", opacity: 0.7 } : {})
                                                         }}>
@@ -1776,7 +1781,7 @@ function Chat() {
                                                                     </div>
                                                                 ) : renderContentWithMentions(msg.content)
                                                             }
-                                                        </p>
+                                                        </div>
                                                         <div style={styles.messageFooter}>
                                                             {msg.scheduled && (
                                                                 <div style={{ fontSize: "11px", color: isOwn ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)", marginBottom: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
@@ -1997,6 +2002,10 @@ function Chat() {
                         </>
                     ) : (
                         <div style={styles.mainContent}>
+                            <header className="chat-header mobile-only-header" style={{ padding: "12px 16px", display: "none", alignItems: "center", borderBottom: "1px solid var(--border-default)" }}>
+                                <button className="mobile-menu-btn touch-target" onClick={() => setIsMobileDrawerOpen(true)} aria-label="Open menu"><Menu size={24} aria-hidden="true" /></button>
+                                <h3 style={{ margin: "0 0 0 12px", color: "var(--text-primary)", fontSize: "var(--fs-body)" }}>ChatUp</h3>
+                            </header>
                             <div style={styles.emptyState}>
                                 <MessageCircle size={48} style={{ color: "var(--text-muted)" }} />
                                 <h3 style={{ color: "#fff", margin: "16px 0 8px" }}>
@@ -2284,7 +2293,7 @@ function Chat() {
 const styles = {
     container: {
         display: "flex",
-        height: "100vh",
+        height: "100dvh",
         fontFamily: "var(--font-family)",
         background: "var(--bg-space)",
         color: "var(--text-primary)",
@@ -2548,8 +2557,10 @@ const styles = {
         position: "relative",
     },
     ownBubble: {
-        background: "var(--accent-gradient)",
-        borderBottomRightRadius: "var(--radius-sm)",
+        background: "var(--bg-bubble-own)",
+        color: "#fff",
+        borderBottomRightRadius: "4px",
+        marginRight: "15px",
     },
     otherBubble: {
         background: "var(--bg-bubble-other)",
@@ -2559,7 +2570,6 @@ const styles = {
         margin: 0,
         fontSize: "var(--fs-body-sm)",
         lineHeight: "1.5",
-        wordBreak: "break-word",
         overflowWrap: "break-word",
     },
     messageTime: {
@@ -2688,10 +2698,12 @@ const styles = {
     reactionsRow: {
         display: "flex",
         gap: "var(--space-xs)",
-        marginTop: "2px",
+        marginTop: "-8px",
         paddingLeft: "var(--space-xs)",
         paddingRight: "var(--space-xs)",
         flexWrap: "wrap",
+        position: "relative",
+        zIndex: 2,
     },
     reactionChip: {
         background: "var(--bg-bubble-other)",
@@ -3012,10 +3024,10 @@ const styles = {
         fontSize: "var(--fs-heading)",
     },
     audioPlayer: {
-        height: "var(--avatar-sm)",
         outline: "none",
-        minWidth: "180px",
+        width: "240px",
         maxWidth: "100%",
+        height: "44px",
     },
     micBtn: {
         background: "transparent",
