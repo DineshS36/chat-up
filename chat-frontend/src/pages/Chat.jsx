@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot, Reply, Forward, SmilePlus, FileText, Pencil, Clock, Menu } from "lucide-react";
 import API from "../services/api";
 import UserList from "../components/UserList";
@@ -35,6 +35,20 @@ function Chat() {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [currentResultIndex, setCurrentResultIndex] = useState(0);
+
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Auto-select chat from URL if provided by Command Palette
+    useEffect(() => {
+        const chatId = searchParams.get("chatId");
+        if (chatId) {
+            setSelectedChatId(chatId);
+            // Optional: remove it from URL after selection so it doesn't linger
+            // setSearchParams({}); 
+        }
+    }, [searchParams, setSearchParams]);
+
+    const navigate = useNavigate();
     const [showSearch, setShowSearch] = useState(false);
     const [pinnedMessages, setPinnedMessages] = useState([]);
     const [previewImage, setPreviewImage] = useState(null);
@@ -78,7 +92,6 @@ function Chat() {
     const typingTimeoutRef = useRef(null);
     const messageRefs = useRef({});
     const fileInputRef = useRef(null);
-    const navigate = useNavigate();
     const toast = useToast();
 
     // Get current user from localStorage

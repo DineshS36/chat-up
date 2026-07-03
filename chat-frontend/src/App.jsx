@@ -6,12 +6,14 @@ import Status from "./pages/Status";
 import CommunityDashboard from "./pages/community/CommunityDashboard";
 import { ToastProvider } from "./components/Toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import CommandPalette from "./components/CommandPalette";
 
 function App() {
   return (
     <ToastProvider>
       <ErrorBoundary>
         <BrowserRouter>
+          <CommandPalette />
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/register" element={<Register />} />
