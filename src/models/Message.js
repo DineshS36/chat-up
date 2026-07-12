@@ -14,7 +14,7 @@ const messageSchema = new mongoose.Schema({
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Receiver is required']
+    default: null  // FIX #4: Optional for group chats (no single receiver)
   },
   content: {
     type: String,

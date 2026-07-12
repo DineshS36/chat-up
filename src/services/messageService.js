@@ -2,6 +2,7 @@ const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
 const UnreadCount = require('../models/UnreadCount');
+const { sanitizeMessageContent } = require('../utils/sanitize');
 
 /**
  * Detect @mentions in message content for group chats.
@@ -54,6 +55,10 @@ const createMessage = async ({ chatId, senderId, receiverId, content, type = 'te
   const chat = await Chat.findById(chatId);
   if (!chat) throw new Error('Chat not found');
 
+  // FIX #7: Sanitize message content to prevent stored XSS
+  const sanitizedContent = type === 'text' ? sanitizeMessageContent(content) : content;
+  if (type === 'text' && !sanitizedContent) throw new Error('Message content cannot be empty');
+
   // Detect @mentions
   const mentionIds = await detectMentions(chat, content);
 
@@ -62,7 +67,7 @@ const createMessage = async ({ chatId, senderId, receiverId, content, type = 'te
     chatId,
     senderId,
     receiverId,
-    content,
+    content: sanitizedContent,
     type,
     status: 'sent',
     replyTo: replyTo || null,

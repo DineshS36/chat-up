@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
   },
   profilePic: {
     type: String,
-    default: 'https://ui-avatars.com/api/?background=random&name=User'
+    default: ''  // FIX #9: No external dependency; frontend renders initials-based fallback
   },
   status: {
     type: String,

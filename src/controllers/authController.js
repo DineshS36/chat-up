@@ -23,6 +23,13 @@ const registerUser = async (req, res, next) => {
       throw error;
     }
 
+    // FIX #3: Guard against NoSQL injection — ensure inputs are plain strings
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      const error = new Error('Invalid input types');
+      error.status = 400;
+      throw error;
+    }
+
     // Check if email already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -65,14 +72,15 @@ const loginUser = async (req, res, next) => {
       throw error;
     }
 
-    // Debug log: incoming request body
-    console.log("Login body:", req.body);
+    // FIX #3: Guard against NoSQL injection — ensure inputs are plain strings
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      const error = new Error('Invalid input types');
+      error.status = 400;
+      throw error;
+    }
 
     // Check if user exists and get password
-    const user = await User.findOne({ email }).select('+password');
-
-    // Debug log: user lookup result
-    console.log("User found:", user ? { _id: user._id, email: user.email } : null);
+    const user = await User.findOne({ email: String(email) }).select('+password');
 
     if (!user) {
       const error = new Error('Invalid credentials');
@@ -82,7 +90,6 @@ const loginUser = async (req, res, next) => {
 
     // Verify password
     const isMatch = await user.comparePassword(password);
-    console.log("Password match:", isMatch);
 
     if (!isMatch) {
       const error = new Error('Invalid credentials');
