@@ -9,6 +9,8 @@ const app = require('./app');
 const connectDB = require('./config/db');
 const chatSocket = require('./sockets/chatSocket');
 const startMessageWorker = require('./workers/messageWorker');
+const { isTokenBlacklisted } = require('./services/tokenService');
+const { createRedisConnection } = require('./config/redis');
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
@@ -27,8 +29,37 @@ const io = new Server(server, {
   }
 });
 
+// ─── Socket.IO Redis Adapter (cross-instance event sync) ──────────
+// Wrapped in try/catch — falls back to single-instance if Redis is unavailable
+(async () => {
+  try {
+    const { createAdapter } = require('@socket.io/redis-adapter');
+    const pubClient = createRedisConnection();
+    const subClient = pubClient.duplicate();
+
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        pubClient.on('connect', resolve);
+        pubClient.on('error', reject);
+        // Give it 3 seconds to connect
+        setTimeout(() => reject(new Error('Redis adapter connection timeout')), 3000);
+      }),
+      new Promise((resolve, reject) => {
+        subClient.on('connect', resolve);
+        subClient.on('error', reject);
+        setTimeout(() => reject(new Error('Redis adapter connection timeout')), 3000);
+      }),
+    ]);
+
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('[Socket.IO] Redis adapter attached — multi-instance support enabled');
+  } catch (err) {
+    console.warn('[Socket.IO] Redis adapter unavailable — running in single-instance mode:', err.message);
+  }
+})();
+
 // Socket.IO JWT authentication middleware
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     // Extract token from auth object or Authorization header
     const token =
@@ -38,6 +69,13 @@ io.use((socket, next) => {
     if (!token) {
       console.warn(`[Socket Auth] Connection rejected — no token (${socket.id})`);
       return next(new Error('Authentication required'));
+    }
+
+    // Check if token has been revoked (logout / password change)
+    const blacklisted = await isTokenBlacklisted(token);
+    if (blacklisted) {
+      console.warn(`[Socket Auth] Connection rejected — token revoked (${socket.id})`);
+      return next(new Error('Token has been revoked'));
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

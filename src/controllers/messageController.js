@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
+const abuseService = require('../services/abuseService');
 
 // @desc    Get all messages for a chat
 // @route   GET /api/messages/:chatId
@@ -8,8 +9,9 @@ const User = require('../models/User');
 exports.getMessages = async (req, res, next) => {
   try {
     const { chatId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const before = req.query.before; // cursor: load messages older than this ID
+    const after = req.query.after;   // cursor: load messages newer than this ID
 
     // Check if user is participant in chat
     const chat = await Chat.findById(chatId);
@@ -29,39 +31,121 @@ exports.getMessages = async (req, res, next) => {
       throw error;
     }
 
-    const messages = await Message.find({ chatId: chatId })
+    // Build query filter
+    const filter = { chatId };
+
+    if (before) {
+      // Load older messages (scrolling up)
+      filter._id = { $lt: before };
+    } else if (after) {
+      // Load newer messages (scrolling down / catching up)
+      filter._id = { $gt: after };
+    }
+
+    // Fetch one extra to determine if there are more messages
+    const messages = await Message.find(filter)
       .populate('senderId', 'name email profilePic')
       .populate('receiverId', 'name email profilePic')
       .populate('replyTo', 'content senderId')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .sort({ _id: -1 })
+      .limit(limit + 1);
 
-    const totalMessages = await Message.countDocuments({ chatId: chatId });
+    // Determine if there are more messages beyond this page
+    const hasMore = messages.length > limit;
+    if (hasMore) {
+      messages.pop(); // Remove the extra document
+    }
+
+    // Return in chronological order (oldest first)
+    const data = messages.reverse();
+
+    // The nextCursor is the oldest message ID in the returned set
+    const nextCursor = data.length > 0 ? data[0]._id : null;
 
     res.json({
       success: true,
-      page,
-      limit,
-      count: messages.length,
-      totalMessages,
-      totalPages: Math.ceil(totalMessages / limit),
-      data: messages.reverse()
+      count: data.length,
+      hasMore,
+      nextCursor,
+      data,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Send a message (DEPRECATED — use Socket.IO 'send_message' event)
+// @desc    Send a message (REST fallback — use Socket.IO 'send_message' for real-time)
 // @route   POST /api/messages
 // @access  Private
-exports.sendMessage = async (req, res) => {
-  console.warn(`[DEPRECATED] POST /api/messages called by userId: ${req.userId}. Use Socket.IO 'send_message' instead.`);
-  res.status(405).json({
-    success: false,
-    message: 'Message creation via REST API is deprecated. Use Socket.IO send_message event instead.',
-  });
+exports.sendMessage = async (req, res, next) => {
+  try {
+    const { chatId, receiverId, content, replyTo } = req.body;
+    const senderId = req.userId;
+
+    // Check if user is suspended
+    const { suspended, remainingSeconds } = await abuseService.isSuspended(senderId);
+    if (suspended) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is temporarily suspended due to abuse.',
+        remainingSeconds,
+      });
+    }
+
+    // Validate required fields
+    if (!chatId || !receiverId || !content) {
+      const error = new Error('chatId, receiverId, and content are required');
+      error.status = 400;
+      throw error;
+    }
+
+    // Check if user is participant in chat
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      const error = new Error('Chat not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const isParticipant = chat.participants.some(
+      (participant) => participant.toString() === senderId
+    );
+
+    if (!isParticipant) {
+      const error = new Error('Not authorized to send messages in this chat');
+      error.status = 403;
+      throw error;
+    }
+
+    // Create message via service (same code path as Socket.IO handler)
+    const { createMessage } = require('../services/messageService');
+    const { message, mentionIds } = await createMessage({
+      chatId, senderId, receiverId, content, replyTo,
+    });
+
+    const populatedMessage = await Message.findById(message._id)
+      .populate('senderId', 'name email profilePic')
+      .populate('receiverId', 'name email profilePic')
+      .populate('replyTo', 'content senderId');
+
+    // Emit via Socket.IO so real-time clients receive the message
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatId.toString()).emit('receive_message', populatedMessage);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: populatedMessage
+    });
+
+    // Track message hash for duplicate flooding detection (after response)
+    if (content) {
+      abuseService.trackMessageHash(senderId, content).catch(() => {});
+    }
+  } catch (error) {
+    next(error);
+  }
 };
 
 // @desc    Mark messages as read

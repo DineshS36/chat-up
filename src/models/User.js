@@ -54,4 +54,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
+// Fast user lookup by status (presence queries)
+userSchema.index({ status: 1 });
+
 module.exports = mongoose.model('User', userSchema);

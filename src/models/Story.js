@@ -39,4 +39,7 @@ const storySchema = new mongoose.Schema(
     }
 );
 
+// Fast active story lookups (non-expired, sorted by creation time)
+storySchema.index({ expiresAt: 1, createdAt: -1 });
+
 module.exports = mongoose.model("Story", storySchema);

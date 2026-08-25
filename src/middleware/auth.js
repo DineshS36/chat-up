@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const { isTokenBlacklisted } = require('../services/tokenService');
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   try {
     let token;
 
@@ -12,6 +13,14 @@ const auth = (req, res, next) => {
     // Check if token exists
     if (!token) {
       const error = new Error('Not authorized, no token');
+      error.status = 401;
+      throw error;
+    }
+
+    // Check if token has been revoked (logout / password change)
+    const blacklisted = await isTokenBlacklisted(token);
+    if (blacklisted) {
+      const error = new Error('Token has been revoked');
       error.status = 401;
       throw error;
     }

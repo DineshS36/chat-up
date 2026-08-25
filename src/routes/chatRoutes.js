@@ -13,6 +13,8 @@ const {
   leaveGroup
 } = require('../controllers/chatController');
 const auth = require('../middleware/auth');
+const validate = require('../middleware/handleValidationErrors');
+const v = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -20,15 +22,15 @@ const router = express.Router();
 router.use(auth);
 
 router.get('/', getChats);
-router.get('/user/:userId', getChatsByUserId);
-router.get('/:id', getChat);
-router.post('/', createChat);
-router.post('/group', createGroupChat);
-router.post('/:chatId/pin', pinMessage);
-router.delete('/:chatId/pin/:messageId', unpinMessage);
-router.put('/:chatId/read', markChatAsRead);
-router.put('/:id/add', addToGroup);
-router.put('/:id/remove', removeFromGroup);
-router.put('/:id/leave', leaveGroup);
+router.get('/user/:userId', v.getChatsByUserId, validate, getChatsByUserId);
+router.get('/:id', v.getChat, validate, getChat);
+router.post('/', v.createChat, validate, createChat);
+router.post('/group', v.createGroupChat, validate, createGroupChat);
+router.post('/:chatId/pin', v.pinMessage, validate, pinMessage);
+router.delete('/:chatId/pin/:messageId', v.unpinMessage, validate, unpinMessage);
+router.put('/:chatId/read', v.markChatAsRead, validate, markChatAsRead);
+router.put('/:id/add', v.addToGroup, validate, addToGroup);
+router.put('/:id/remove', v.removeFromGroup, validate, removeFromGroup);
+router.put('/:id/leave', v.leaveGroup, validate, leaveGroup);
 
 module.exports = router;

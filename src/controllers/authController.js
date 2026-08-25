@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const { blacklistToken } = require('../services/tokenService');
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -118,4 +119,39 @@ const loginUser = async (req, res, next) => {
   }
 };
 
-module.exports = { registerUser, loginUser };
+// @desc    Logout user (revoke token server-side)
+// @route   POST /api/auth/logout
+// @access  Private
+const logoutUser = async (req, res, next) => {
+  try {
+    // Extract the token from the Authorization header
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (token) {
+      // Decode to get expiration time
+      const decoded = jwt.decode(token);
+      if (decoded && decoded.exp) {
+        // Calculate remaining TTL in seconds
+        const remainingTTL = decoded.exp - Math.floor(Date.now() / 1000);
+        if (remainingTTL > 0) {
+          await blacklistToken(token, remainingTTL);
+        }
+      }
+    }
+
+    // Update user status to offline
+    await User.updateOne({ _id: req.userId }, {
+      status: 'offline',
+      lastSeen: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { registerUser, loginUser, logoutUser };

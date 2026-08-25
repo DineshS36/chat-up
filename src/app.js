@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
@@ -17,6 +18,9 @@ const inviteRoutes = require('./modules/invite/invite.routes');
 const backupRoutes = require('./modules/backup/backup.routes');
 
 const app = express();
+
+// Security headers (CSP, X-Frame-Options, X-Content-Type-Options, HSTS, etc.)
+app.use(helmet());
 
 // CORS whitelist
 const allowedOrigins = [
