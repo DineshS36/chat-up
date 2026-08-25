@@ -1,3208 +1,441 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { MessageCircle, Check, CheckCheck, Phone, Video, X, Users, User, LogOut, Pin, Search, ChevronUp, ChevronDown, Send, Paperclip, Mic, Square, Plus, Clipboard, Trash2, Info, Download, CircleDot, Reply, Forward, SmilePlus, FileText, Pencil, Clock, Menu } from "lucide-react";
 import API from "../services/api";
-import UserList from "../components/UserList";
 import socket from "../socket/socket";
 import { encryptText, decryptMessageObj } from "../utils/encryption";
-import { formatDuration, formatLastSeen, formatTime, formatMessageTime } from "../utils/dateUtils";
-import { getChatName, getInitial } from "../utils/chatUtils";
-import { ChatListSkeleton, MessageListSkeleton } from "../components/LoadingSkeletons";
 import { useToast } from "../context/toast";
-import { ErrorBoundary, ChatErrorFallback } from "../components/ErrorBoundary";
+
+import ChatSidebar from "../components/chat/ChatSidebar";
+import ChatArea from "../components/chat/ChatArea";
+import GroupInfoModal from "../components/chat/GroupInfoModal";
+import CallModal from "../components/chat/CallModal";
+import UserList from "../components/UserList";
 
 function Chat() {
-    const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const toast = useToast();
 
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    // Chat list & Selection
     const [chats, setChats] = useState([]);
     const [selectedChatId, setSelectedChatId] = useState(null);
-    const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [showUserList, setShowUserList] = useState(false);
-    const [error, setError] = useState("");
-    const [messages, setMessages] = useState([]);
-    const [messageText, setMessageText] = useState("");
-    const [editingMessageId, setEditingMessageId] = useState(null);
-    const [messageToDelete, setMessageToDelete] = useState(null);
-
-    // Scheduling state
-    const [showSchedulePicker, setShowSchedulePicker] = useState(false);
-    const [scheduledTime, setScheduledTime] = useState("");
-
-    const [replyMessage, setReplyMessage] = useState(null);
-    const [emojiPickerMsgId, setEmojiPickerMsgId] = useState(null);
-    const [selectedMessages, setSelectedMessages] = useState([]);
+    const [loadingChats, setLoadingChats] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
-    const [searchResults, setSearchResults] = useState([]);
-    const [currentResultIndex, setCurrentResultIndex] = useState(0);
+    const [unreadFilter, setUnreadFilter] = useState(false);
 
-    const [searchParams, setSearchParams] = useSearchParams();
+    // Messages & Pagination
+    const [messages, setMessages] = useState([]);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+    const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
+    const [nextCursor, setNextCursor] = useState(null);
+    const [replyingTo, setReplyingTo] = useState(null);
 
-    // Auto-select chat from URL if provided by Command Palette
+    // Online Statuses & Typing
+    const [onlineStatuses, setOnlineStatuses] = useState({});
+    const [isTyping, setIsTyping] = useState(false);
+
+    // Modals
+    const [showUserListModal, setShowUserListModal] = useState(false);
+    const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
+
+    // WebRTC Calls
+    const [callState, setCallState] = useState(null); // null | 'incoming' | 'calling' | 'connected'
+    const [callType, setCallType] = useState("audio");
+    const [callPeer, setCallPeer] = useState(null);
+    const [incomingCallData, setIncomingCallData] = useState(null);
+    const [localStream, setLocalStream] = useState(null);
+    const [remoteStream, setRemoteStream] = useState(null);
+    const peerConnectionRef = useRef(null);
+
+    // Auto-select chat from URL parameter
     useEffect(() => {
         const chatId = searchParams.get("chatId");
         if (chatId) {
             setSelectedChatId(chatId);
-            // Optional: remove it from URL after selection so it doesn't linger
-            // setSearchParams({}); 
         }
-    }, [searchParams, setSearchParams]);
+    }, [searchParams]);
 
-    const navigate = useNavigate();
-    const [showSearch, setShowSearch] = useState(false);
-    const [pinnedMessages, setPinnedMessages] = useState([]);
-    const [previewImage, setPreviewImage] = useState(null);
-    const [forwardMessageId, setForwardMessageId] = useState(null);
-    const [loadingMessages, setLoadingMessages] = useState(false);
-    const [isTyping, setIsTyping] = useState(false);
-    const [onlineStatuses, setOnlineStatuses] = useState({});
-
-    // Group Management State
-    const [showGroupInfo, setShowGroupInfo] = useState(false);
-    const [groupToAddUsers, setGroupToAddUsers] = useState(null);
-
-    // Mention Autocomplete State
-    const [mentionQuery, setMentionQuery] = useState("");
-    const [mentionSuggestions, setMentionSuggestions] = useState([]);
-    const [showMentionDropdown, setShowMentionDropdown] = useState(false);
-
-    // WebRTC Calling State
-    const [incomingCall, setIncomingCall] = useState(null); // { callerId, callerName, chatId, callType }
-    const [isInCall, setIsInCall] = useState(false);
-    const [currentCallType, setCurrentCallType] = useState("audio");
-    const [callPeerId, setCallPeerId] = useState(null);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoOff, setIsVideoOff] = useState(false);
-    const callTypeRef = useRef("audio");
-    const localStreamRef = useRef(null);
-    const remoteAudioRef = useRef(null);
-    const localVideoRef = useRef(null);
-    const remoteVideoRef = useRef(null);
-    const peerConnectionRef = useRef(null);
-
-    // Voice Recording State
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordingDuration, setRecordingDuration] = useState(0);
-    const recorderRef = useRef(null);
-    const mediaStreamRef = useRef(null);
-    const audioChunksRef = useRef([]);
-    const recordingIntervalRef = useRef(null);
-
-    const messagesEndRef = useRef(null);
-    const typingTimeoutRef = useRef(null);
-    const messageRefs = useRef({});
-    const fileInputRef = useRef(null);
-    const toast = useToast();
-
-    // Get current user from localStorage
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-
-    // ─── Auth check & fetch chats ───
+    // Initial Load: Fetch User Chats
     useEffect(() => {
-        const token = localStorage.getItem("token");
-        if (!token) {
+        if (!user._id) {
             navigate("/");
             return;
         }
+
         fetchChats();
 
-        // Request browser notification permission
-        if ("Notification" in window && Notification.permission === "default") {
-            Notification.requestPermission();
-        }
-
-        // Register with socket
-        if (user._id) {
-            socket.emit("join", user._id);
-            socket.emit("user_online", user._id);
-        }
-
-        // Send heartbeat every 25s to keep presence alive
-        const heartbeatInterval = setInterval(() => {
-            if (user._id) socket.emit("heartbeat", user._id);
-        }, 25000);
+        // Connect Socket.IO
+        socket.connect();
+        socket.emit("setup", user._id);
 
         return () => {
-            clearInterval(heartbeatInterval);
+            socket.disconnect();
+        };
+    }, []);
+
+    // Socket Event Subscriptions
+    useEffect(() => {
+        socket.on("receive_message", (newMsg) => {
+            const decrypted = decryptMessageObj(newMsg);
+            if (decrypted.chatId === selectedChatId) {
+                setMessages(prev => [...prev, decrypted]);
+            }
+            // Update sidebar lastMessage
+            setChats(prev => prev.map(c => {
+                if (c._id === decrypted.chatId) {
+                    return { ...c, lastMessage: decrypted };
+                }
+                return c;
+            }));
+        });
+
+        socket.on("message_sent", (sentMsg) => {
+            const decrypted = decryptMessageObj(sentMsg);
+            if (decrypted.chatId === selectedChatId) {
+                setMessages(prev => [...prev, decrypted]);
+            }
+        });
+
+        socket.on("user_typing", ({ chatId }) => {
+            if (chatId === selectedChatId) setIsTyping(true);
+        });
+
+        socket.on("user_stop_typing", ({ chatId }) => {
+            if (chatId === selectedChatId) setIsTyping(false);
+        });
+
+        socket.on("user_status_update", ({ userId, status }) => {
+            setOnlineStatuses(prev => ({ ...prev, [userId]: status }));
+        });
+
+        socket.on("account_suspended", ({ message, remainingSeconds }) => {
+            toast?.error?.(`Account Suspended: ${message} (Try again in ${remainingSeconds}s)`);
+        });
+
+        socket.on("rate_limited", ({ message }) => {
+            toast?.warning?.(message);
+        });
+
+        socket.on("incoming_call", ({ callerId, callerName, chatId, callType }) => {
+            setIncomingCallData({ callerId, callerName, chatId, callType });
+            setCallPeer({ id: callerId, name: callerName });
+            setCallType(callType);
+            setCallState("incoming");
+        });
+
+        socket.on("call_accepted", () => {
+            setCallState("connected");
+        });
+
+        socket.on("call_rejected", () => {
+            setCallState(null);
+            toast?.info?.("Call declined");
+        });
+
+        socket.on("end_call", () => {
+            cleanupCall();
+        });
+
+        return () => {
             socket.off("receive_message");
-            socket.off("message_delivered");
-            socket.off("messages_read");
+            socket.off("message_sent");
             socket.off("user_typing");
             socket.off("user_stop_typing");
             socket.off("user_status_update");
-
-            // Cleanup audio streams if unmounted
-            if (mediaStreamRef.current) {
-                mediaStreamRef.current.getTracks().forEach(t => t.stop());
-            }
-            if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+            socket.off("account_suspended");
+            socket.off("rate_limited");
+            socket.off("incoming_call");
+            socket.off("call_accepted");
+            socket.off("call_rejected");
+            socket.off("end_call");
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedChatId]);
 
-    // ─── Listen for incoming messages ───
-    useEffect(() => {
-        const handleReceive = (message) => {
-            const decryptedMessage = decryptMessageObj(message);
-            if (decryptedMessage.chatId === selectedChatId) {
-                setMessages((prev) => {
-                    // Check if we already have this exact ID (useful for scheduled message auto-refreshes)
-                    const exists = prev.some((m) => m._id === decryptedMessage._id);
-                    if (exists) {
-                        return prev.map(m => m._id === decryptedMessage._id ? decryptedMessage : m);
-                    }
-
-                    // Also check if we have a temporary ID for this scheduled message
-                    // We can match by content and scheduled status
-                    if (decryptedMessage.scheduled_dispatched) {
-                        const tempIndex = prev.findIndex(m =>
-                            m.scheduled === true && m.content === decryptedMessage.content
-                        );
-                        if (tempIndex !== -1) {
-                            const newArray = [...prev];
-                            newArray[tempIndex] = decryptedMessage;
-                            return newArray;
-                        }
-                    }
-
-                    return [...prev, decryptedMessage];
-                });
-                // Mark as read since we have this chat open
-                socket.emit("messages_read", {
-                    chatId: selectedChatId,
-                    userId: user._id,
-                });
-            } else {
-                // Show browser notification for messages in other chats
-                if ("Notification" in window && Notification.permission === "granted") {
-                    const senderName = decryptedMessage.senderId?.name || decryptedMessage.senderName || "Someone";
-                    const body = decryptedMessage.type === "image" ? "📷 Sent a photo"
-                        : decryptedMessage.type === "file" ? "📄 Sent a file"
-                            : decryptedMessage.type === "audio" ? "🎤 Sent a voice message"
-                                : decryptedMessage.content?.substring(0, 100) || "New message";
-
-                    const notification = new Notification(senderName, {
-                        body,
-                        icon: "/favicon.ico",
-                        tag: decryptedMessage.chatId, // Prevent duplicate notifications per chat
-                    });
-
-                    notification.onclick = () => {
-                        window.focus();
-                        setSelectedChatId(decryptedMessage.chatId);
-                        notification.close();
-                    };
-                }
-            }
-            fetchChats();
-        };
-
-        // Handle sender's own message confirmation — replace optimistic temp message
-        const handleMessageSent = (message) => {
-            const decryptedMessage = decryptMessageObj(message);
-            setMessages((prev) => {
-                // Find the optimistic temp message (has Date.now() ID, same chatId)
-                const tempIdx = prev.findIndex(
-                    (m) =>
-                        m.chatId === decryptedMessage.chatId &&
-                        m.senderId === user._id &&
-                        !m._id.match(/^[0-9a-f]{24}$/) // temp IDs are not valid ObjectIds
-                );
-                if (tempIdx !== -1) {
-                    const updated = [...prev];
-                    updated[tempIdx] = decryptedMessage;
-                    return updated;
-                }
-                // Fallback: just add if no temp found (shouldn't happen)
-                return [...prev, decryptedMessage];
-            });
-            fetchChats();
-        };
-
-        const handleDelivered = ({ messageId }) => {
-            setMessages((prev) =>
-                prev.map((msg) =>
-                    msg._id === messageId || msg._id === messageId?.toString()
-                        ? { ...msg, status: "delivered" }
-                        : msg
-                )
-            );
-        };
-
-        const handleRead = ({ chatId }) => {
-            if (chatId === selectedChatId) {
-                setMessages((prev) =>
-                    prev.map((msg) => {
-                        const isOwn =
-                            msg.senderId === user._id ||
-                            msg.senderId?._id === user._id;
-                        return isOwn ? { ...msg, status: "read" } : msg;
-                    })
-                );
-            }
-        };
-
-        // ─── Typing indicators ───
-        const handleUserTyping = ({ chatId, senderId }) => {
-            if (chatId === selectedChatId && senderId !== user._id) {
-                setIsTyping(true);
-            }
-        };
-
-        const handleUserStopTyping = ({ chatId }) => {
-            if (chatId === selectedChatId) {
-                setIsTyping(false);
-            }
-        };
-
-        const handleUserStatusUpdate = ({ userId, status, lastSeen }) => {
-            setOnlineStatuses((prev) => ({
-                ...prev,
-                [userId]: { status, lastSeen },
-            }));
-        };
-
-        const handleMessageUpdated = (updatedMsg) => {
-            setMessages((prev) =>
-                prev.map((m) => (m._id === updatedMsg._id ? updatedMsg : m))
-            );
-        };
-
-        const handleMessageDeleted = (deletedMsgId) => {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === deletedMsgId
-                        ? { ...m, deleted: true, content: "This message was deleted" }
-                        : m
-                )
-            );
-            fetchChats();
-        };
-
-        const handleReactionUpdated = ({ _id, reactions }) => {
-            setMessages((prev) =>
-                prev.map((m) => (m._id === _id ? { ...m, reactions } : m))
-            );
-        };
-
-        const handlePinnedUpdated = (pinned) => {
-            setPinnedMessages(pinned.map(decryptMessageObj));
-        };
-
-        socket.on("receive_message", handleReceive);
-        socket.on("message_sent", handleMessageSent);
-        socket.on("message_delivered", handleDelivered);
-        socket.on("messages_read", handleRead);
-        socket.on("user_typing", handleUserTyping);
-        socket.on("user_stop_typing", handleUserStopTyping);
-        socket.on("user_status_update", handleUserStatusUpdate);
-        socket.on("message_updated", handleMessageUpdated);
-        socket.on("message_deleted", handleMessageDeleted);
-        socket.on("reaction_updated", handleReactionUpdated);
-        socket.on("pinned_updated", handlePinnedUpdated);
-
-        const handleGroupUpdated = (updatedChat) => {
-            setChats((prev) => {
-                const exists = prev.some(c => c._id === updatedChat._id);
-                if (exists) return prev.map(c => c._id === updatedChat._id ? updatedChat : c);
-                return [updatedChat, ...prev];
-            });
-        };
-
-        const handleUserLeft = (data) => {
-            if (data && data._id && !data.participants) {
-                setChats((prev) => prev.filter(c => c._id !== data._id));
-                if (selectedChatId === data._id) setSelectedChatId(null);
-            } else if (data) {
-                handleGroupUpdated(data);
-            }
-        };
-
-        socket.on("user_joined_group", handleGroupUpdated);
-        socket.on("user_left_group", handleUserLeft);
-
-        const handleMentionNotification = (data) => {
-            console.log(`You were mentioned by ${data.senderName} in ${data.chatName || "a chat"}`);
-            // If mentioned in a different chat than the one open, update sidebar
-            if (data.chatId !== selectedChatId) {
-                fetchChats();
-            }
-        };
-        socket.on("mention_notification", handleMentionNotification);
-
-        // WebRTC Signaling Listeners
-        const handleIncomingCall = (data) => {
-            setIncomingCall(data);
-        };
-
-        const handleCallAccepted = async ({ receiverId }) => {
-            setCallPeerId(receiverId);
-            setIsInCall(true);
-            await setupWebRTC(receiverId, true, callTypeRef.current);
-        };
-
-        const handleCallRejected = ({ reason }) => {
-            toast.info(`Call rejected: ${reason}`, {
-                title: "Call Ended",
-            });
-            endCallLocally();
-        };
-
-        const handleWebRTCSignal = async ({ signal, from }) => {
-            if (!peerConnectionRef.current) {
-                await setupWebRTC(from, false, callTypeRef.current);
-            }
-            try {
-                if (signal.type === 'offer' || signal.type === 'answer') {
-                    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal));
-                    if (signal.type === 'offer') {
-                        const answer = await peerConnectionRef.current.createAnswer();
-                        await peerConnectionRef.current.setLocalDescription(answer);
-                        socket.emit('webrtc_signal', { targetId: from, signal: answer });
-                    }
-                } else if (signal.candidate) {
-                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal));
-                }
-            } catch (err) {
-                console.error("Error handling WebRTC signal:", err);
-            }
-        };
-
-        const handleEndCall = () => {
-            endCallLocally();
-        };
-
-        socket.on("incoming_call", handleIncomingCall);
-        socket.on("call_accepted", handleCallAccepted);
-        socket.on("call_rejected", handleCallRejected);
-        socket.on("webrtc_signal", handleWebRTCSignal);
-        socket.on("end_call", handleEndCall);
-
-        return () => {
-            socket.off("receive_message", handleReceive);
-            socket.off("message_sent", handleMessageSent);
-            socket.off("message_delivered", handleDelivered);
-            socket.off("messages_read", handleRead);
-            socket.off("user_typing", handleUserTyping);
-            socket.off("user_stop_typing", handleUserStopTyping);
-            socket.off("user_status_update", handleUserStatusUpdate);
-            socket.off("message_updated", handleMessageUpdated);
-            socket.off("message_deleted", handleMessageDeleted);
-            socket.off("reaction_updated", handleReactionUpdated);
-            socket.off("pinned_updated", handlePinnedUpdated);
-            socket.off("user_joined_group", handleGroupUpdated);
-            socket.off("user_left_group", handleUserLeft);
-            socket.off("mention_notification", handleMentionNotification);
-
-            socket.off("incoming_call", handleIncomingCall);
-            socket.off("call_accepted", handleCallAccepted);
-            socket.off("call_rejected", handleCallRejected);
-            socket.off("webrtc_signal", handleWebRTCSignal);
-            socket.off("end_call", handleEndCall);
-        };
-    }, [selectedChatId, user._id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // ─── WebRTC Handlers ───
-    const setupWebRTC = async (targetId, isInitiator, type = "audio") => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: type === "video"
-            });
-            localStreamRef.current = stream;
-
-            if (type === "video" && localVideoRef.current) {
-                localVideoRef.current.srcObject = stream;
-            }
-
-            const pc = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-            });
-            peerConnectionRef.current = pc;
-
-            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('webrtc_signal', { targetId, signal: event.candidate });
-                }
-            };
-
-            pc.ontrack = (event) => {
-                const remoteStream = event.streams[0];
-                if (type === "video" && remoteVideoRef.current) {
-                    remoteVideoRef.current.srcObject = remoteStream;
-                } else if (remoteAudioRef.current) {
-                    remoteAudioRef.current.srcObject = remoteStream;
-                }
-            };
-
-            if (isInitiator) {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socket.emit('webrtc_signal', { targetId, signal: offer });
-            }
-        } catch (err) {
-            console.error("Error accessing media devices:", err);
-            toast.error("Could not access your camera or microphone.", {
-                title: "Permission Required",
-            });
-            endCallLocally();
-        }
-    };
-
-    const endCallLocally = () => {
-        setIsInCall(false);
-        setIncomingCall(null);
-        setCallPeerId(null);
-        setIsMuted(false);
-        setIsVideoOff(false);
-
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(t => t.stop());
-            localStreamRef.current = null;
-        }
-
-        if (peerConnectionRef.current) {
-            peerConnectionRef.current.close();
-            peerConnectionRef.current = null;
-        }
-
-        if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = null;
-        }
-        if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = null;
-        }
-        if (localVideoRef.current) {
-            localVideoRef.current.srcObject = null;
-        }
-    };
-
-    const handleCallUser = (type = "audio") => {
-        const selectedChat = chats.find(c => c._id === selectedChatId);
-        const otherParticipant = selectedChat?.participants.find(p => p._id !== user._id);
-        if (!otherParticipant) return;
-
-        setCallPeerId(otherParticipant._id);
-        setCurrentCallType(type);
-        callTypeRef.current = type;
-
-        socket.emit('call_user', {
-            callerId: user._id,
-            receiverId: otherParticipant._id,
-            callerName: user.name,
-            chatId: selectedChatId,
-            callType: type
-        });
-        setIsInCall(true);
-    };
-
-    const acceptCall = () => {
-        if (!incomingCall) return;
-        const type = incomingCall.callType || "audio";
-        setCurrentCallType(type);
-        callTypeRef.current = type;
-
-        socket.emit('call_accepted', {
-            callerId: incomingCall.callerId,
-            receiverId: user._id
-        });
-        setCallPeerId(incomingCall.callerId);
-        setIsInCall(true);
-        setupWebRTC(incomingCall.callerId, false, type);
-        setIncomingCall(null);
-    };
-
-    const toggleMute = () => {
-        if (localStreamRef.current) {
-            const audioTrack = localStreamRef.current.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                setIsMuted(!audioTrack.enabled);
-            }
-        }
-    };
-
-    const toggleVideo = () => {
-        if (localStreamRef.current) {
-            const videoTrack = localStreamRef.current.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = !videoTrack.enabled;
-                setIsVideoOff(!videoTrack.enabled);
-            }
-        }
-    };
-
-    const rejectCall = () => {
-        if (!incomingCall) return;
-        socket.emit('call_rejected', { callerId: incomingCall.callerId });
-        setIncomingCall(null);
-    };
-
-    const hangUp = () => {
-        if (callPeerId) {
-            socket.emit('end_call', { targetId: callPeerId });
-        }
-        endCallLocally();
-    };
-
-    // ─── Fetch messages when chat is selected ───
+    // Handle Chat Selection & Pagination Reset (Fixes Bug #4)
     useEffect(() => {
         if (selectedChatId) {
+            // Reset pagination state immediately when switching chats
+            setNextCursor(null);
+            setHasMoreMessages(true);
+
             fetchMessages(selectedChatId);
             socket.emit("join_chat", selectedChatId);
-            // Mark messages as read when opening a chat
-            socket.emit("messages_read", {
-                chatId: selectedChatId,
-                userId: user._id,
-            });
-            // Reset unread count via API
-            API.put(`/chats/${selectedChatId}/read`).catch(() => { });
-            // Optimistically clear badge in sidebar
-            setChats((prev) =>
-                prev.map((c) =>
-                    c._id === selectedChatId
-                        ? {
-                            ...c,
-                            unreadCounts: {
-                                ...c.unreadCounts,
-                                [user._id]: 0,
-                            },
-                        }
-                        : c
-                )
-            );
+
+            // Mark read
+            API.put(`/chats/${selectedChatId}/read`).catch(() => {});
         } else {
             setMessages([]);
-            setIsTyping(false);
         }
-    }, [selectedChatId, user._id]);
-
-    // ─── Auto-scroll to bottom ───
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [selectedChatId]);
 
     const fetchChats = async () => {
         try {
-            setLoading(true);
+            setLoadingChats(true);
             const res = await API.get("/chats");
-            const decryptedChats = res.data.data.map(c => {
-                if (c.lastMessage) {
-                    c.lastMessage = decryptMessageObj(c.lastMessage);
-                }
-                return c;
-            });
-            setChats(decryptedChats);
+            const decrypted = res.data.data.map(c => ({
+                ...c,
+                lastMessage: c.lastMessage ? decryptMessageObj(c.lastMessage) : null
+            }));
+            setChats(decrypted);
         } catch (err) {
-            if (err.response?.status === 401) {
-                localStorage.removeItem("token");
-                localStorage.removeItem("user");
-                navigate("/");
-                return;
-            }
-            setError("Failed to load chats");
+            console.error("Failed to fetch chats:", err);
         } finally {
-            setLoading(false);
+            setLoadingChats(false);
         }
     };
 
-    const fetchMessages = async (chatId) => {
+    const fetchMessages = async (chatId, cursor = null) => {
         try {
-            setLoadingMessages(true);
-            const res = await API.get(`/messages/${chatId}`);
-            setMessages(res.data.data.map(decryptMessageObj));
+            if (cursor) {
+                setLoadingOlderMessages(true);
+            } else {
+                setLoadingMessages(true);
+            }
+
+            const params = new URLSearchParams({ limit: '30' });
+            if (cursor) params.set('before', cursor);
+
+            const res = await API.get(`/messages/${chatId}?${params.toString()}`);
+            const decrypted = res.data.data.map(decryptMessageObj);
+
+            if (cursor) {
+                setMessages(prev => [...decrypted, ...prev]);
+            } else {
+                setMessages(decrypted);
+            }
+
+            setHasMoreMessages(res.data.hasMore);
+            setNextCursor(res.data.nextCursor);
         } catch (err) {
-            console.error("Failed to load messages:", err);
+            console.error("Failed to fetch messages:", err);
         } finally {
             setLoadingMessages(false);
+            setLoadingOlderMessages(false);
         }
     };
 
-    // ─── Export Chat ───
-    const handleExportChat = async (format = 'json') => {
-        try {
-            if (!selectedChatId) return;
-            const res = await API.get(`/backup/${selectedChatId}?format=${format}`, {
-                responseType: 'blob' // Essential for forcing download logic
-            });
+    const handleSendMessage = (text) => {
+        if (!selectedChatId) return;
+        const currentChat = chats.find(c => c._id === selectedChatId);
+        if (!currentChat) return;
 
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `chat-backup-${selectedChatId}.${format}`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (err) {
-            console.error('Failed to export chat:', err);
-            toast.error("Failed to export this chat backup.", {
-                title: "Export Failed",
-            });
-        }
-    };
+        const recipient = currentChat.participants?.find(p => p._id !== user._id);
+        const encryptedContent = encryptText(text);
 
-    // ─── Typing emit ───
-    const handleInputChange = (e) => {
-        const value = e.target.value;
-        setMessageText(value);
-
-        // Detect @mention trigger
-        if (selectedChat?.isGroupChat) {
-            const cursorPos = e.target.selectionStart;
-            const textBeforeCursor = value.substring(0, cursorPos);
-            const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
-
-            if (mentionMatch) {
-                const query = mentionMatch[1].toLowerCase();
-                setMentionQuery(query);
-                const participants = selectedChat.participants || [];
-                const filtered = participants.filter(
-                    p => p._id !== user._id && p.name?.toLowerCase().startsWith(query)
-                );
-                setMentionSuggestions(filtered);
-                setShowMentionDropdown(filtered.length > 0);
-            } else {
-                setShowMentionDropdown(false);
-                setMentionSuggestions([]);
-            }
-        } else {
-            setShowMentionDropdown(false);
-        }
-
-        if (selectedChatId) {
-            socket.emit("typing", {
-                chatId: selectedChatId,
-                senderId: user._id,
-            });
-
-            clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(() => {
-                socket.emit("stop_typing", {
-                    chatId: selectedChatId,
-                    senderId: user._id,
-                });
-            }, 1000);
-        }
-    };
-
-    const selectMention = (participant) => {
-        const cursorPos = messageText.lastIndexOf("@" + mentionQuery);
-        if (cursorPos === -1) return;
-        const before = messageText.substring(0, cursorPos);
-        const after = messageText.substring(cursorPos + 1 + mentionQuery.length);
-        setMessageText(before + "@" + participant.name + " " + after);
-        setShowMentionDropdown(false);
-        setMentionSuggestions([]);
-    };
-
-    // Render message content with @mention highlighting
-    const renderContentWithMentions = (content) => {
-        if (!content) return content;
-        const parts = content.split(/(@\w+)/g);
-        return parts.map((part, i) => {
-            if (part.startsWith("@")) {
-                return <span key={i} style={{ color: "#4f9cff", fontWeight: 600 }}>{part}</span>;
-            }
-            return part;
-        });
-    };
-
-    // ─── Send message via socket or API for edits ───
-    const handleSendMessage = async () => {
-        if (!messageText.trim() || !selectedChatId) return;
-
-        // Stop typing indicator on send
-        clearTimeout(typingTimeoutRef.current);
-        socket.emit("stop_typing", {
+        socket.emit("send_message", {
             chatId: selectedChatId,
-            senderId: user._id,
+            receiverId: recipient?._id || currentChat._id,
+            content: encryptedContent,
+            replyTo: replyingTo?._id || null
         });
 
-        const selectedChat = chats.find((c) => c._id === selectedChatId);
-        const otherUser = selectedChat?.participants?.find(
-            (p) => p._id !== user._id
-        );
-
-        if (!otherUser && !selectedChat?.isGroupChat) return;
-
-        try {
-            if (editingMessageId) {
-                // Determine if we are updating an optimistically created message (which has a generic timestamp ID)
-                // If it's real, send the PUT request
-                if (!editingMessageId.startsWith("17")) {
-                    await API.put(`/messages/${editingMessageId}`, {
-                        content: encryptText(messageText.trim()),
-                    });
-                } else {
-                    // Update purely locally if it hasn't hit DB yet (edge case)
-                    setMessages((prev) =>
-                        prev.map((m) =>
-                            m._id === editingMessageId
-                                ? { ...m, content: messageText.trim(), edited: true }
-                                : m
-                        )
-                    );
-                }
-
-                setEditingMessageId(null);
-                setMessageText("");
-                fetchChats();
-                return;
-            }
-
-            const msgPayload = {
-                chatId: selectedChatId,
-                senderId: user._id,
-                receiverId: otherUser?._id,
-                content: encryptText(messageText.trim()),
-                replyTo: replyMessage?._id || null,
-            };
-
-            // Send via socket instead of API for real-time
-            socket.emit("send_message", msgPayload);
-
-            // Optimistically add the message to the UI
-            setMessages((prev) => [
-                ...prev,
-                {
-                    _id: Date.now().toString(),
-                    ...msgPayload,
-                    content: messageText.trim(), // Keep plaintext in UI state
-                    // Keep full replyTo object for optimistic render
-                    replyTo: replyMessage ? { _id: replyMessage._id, content: replyMessage.content, senderId: replyMessage.senderId } : null,
-                    createdAt: new Date().toISOString(),
-                    status: "sent",
-                },
-            ]);
-
-            setMessageText("");
-            setReplyMessage(null);
-            fetchChats(); // Update sidebar lastMessage
-        } catch (error) {
-            console.error("Error managing message:", error);
-            toast.error("Failed to send the message. Please try again.", {
-                title: editingMessageId ? "Update Failed" : "Send Failed",
-            });
-        }
+        setReplyingTo(null);
     };
 
-    const handleScheduleMessage = async () => {
-        if (!messageText.trim() || !selectedChatId || !scheduledTime) return;
-
-        const scheduledDate = new Date(scheduledTime);
-        if (scheduledDate <= new Date()) {
-            toast.warning("Scheduled time must be in the future.", {
-                title: "Invalid Schedule",
-            });
-            return;
-        }
-
-        const selectedChat = chats.find((c) => c._id === selectedChatId);
-        const otherUser = selectedChat?.participants?.find((p) => p._id !== user._id);
-
-        if (!otherUser && !selectedChat?.isGroupChat) return;
-
-        try {
-            const msgPayload = {
-                chatId: selectedChatId,
-                receiverId: otherUser?._id,
-                content: encryptText(messageText.trim()),
-                replyTo: replyMessage?._id || null,
-                scheduledTime: scheduledDate.toISOString()
-            };
-
-            const res = await API.post("/messages/schedule", msgPayload);
-            const savedMsg = res.data.data;
-
-            // Optimistically add the scheduled message to UI
-            setMessages((prev) => [
-                ...prev,
-                {
-                    ...savedMsg,
-                    content: messageText.trim(), // Plan text
-                    replyTo: replyMessage ? { _id: replyMessage._id, content: replyMessage.content, senderId: replyMessage.senderId } : null,
-                },
-            ]);
-
-            setMessageText("");
-            setReplyMessage(null);
-            setShowSchedulePicker(false);
-            setScheduledTime("");
-            toast.success("Message scheduled successfully.", {
-                title: "Scheduled",
-            });
-        } catch (error) {
-            console.error("Error scheduling message:", error);
-            toast.error("Failed to schedule the message.", {
-                title: "Schedule Failed",
-            });
-        }
-    };
-
-    const handleEditClick = (msg) => {
-        setEditingMessageId(msg._id);
-        setMessageText(msg.content);
-    };
-
-    const handleCancelEdit = () => {
-        setEditingMessageId(null);
-        setMessageText("");
-    };
-
-    const handleDeleteClick = (msgId) => {
-        setMessageToDelete(msgId);
-    };
-
-    const confirmDelete = async () => {
-        if (!messageToDelete) return;
-
-        try {
-            await API.delete(`/messages/${messageToDelete}`);
-            // Optimistically update
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === messageToDelete
-                        ? { ...m, deleted: true, content: "This message was deleted" }
-                        : m
-                )
-            );
-            fetchChats();
-        } catch (error) {
-            console.error("Failed to delete message", error);
-            toast.error("Could not delete the message.", {
-                title: "Delete Failed",
-            });
-        } finally {
-            setMessageToDelete(null);
-        }
-    };
-
-    const cancelDelete = () => {
-        setMessageToDelete(null);
-    };
-
-    const handleReaction = async (messageId, emoji) => {
-        // Optimistic UI Update
-        setMessages((prev) =>
-            prev.map((m) => {
-                if (m._id === messageId) {
-                    const reactions = [...(m.reactions || [])];
-                    const existingIdx = reactions.findIndex(r => r.userId === user._id || r.userId?._id === user._id);
-                    if (existingIdx !== -1) {
-                        if (reactions[existingIdx].emoji === emoji) {
-                            reactions.splice(existingIdx, 1);
-                        } else {
-                            reactions[existingIdx].emoji = emoji;
-                        }
-                    } else {
-                        reactions.push({ userId: user._id, emoji });
-                    }
-                    return { ...m, reactions };
-                }
-                return m;
-            })
-        );
-
-        setEmojiPickerMsgId(null);
-
-        try {
-            await API.post(`/messages/${messageId}/react`, { emoji });
-            // Removed fetchMessages(selectedChatId) to prevent full reload delay
-        } catch (error) {
-            console.error("Failed to react", error);
-            // On failure, revert by refetching
-            fetchMessages(selectedChatId);
-            toast.error("Could not update the reaction.", {
-                title: "Reaction Failed",
-            });
-        }
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
-        // Escape to clear selection
-        if (e.key === "Escape" && selectedMessages.length > 0) {
-            setSelectedMessages([]);
-        }
-    };
-
-    // ─── Selection handlers ───
-    const toggleMessageSelection = (msgId) => {
-        setSelectedMessages((prev) =>
-            prev.includes(msgId)
-                ? prev.filter((id) => id !== msgId)
-                : [...prev, msgId]
-        );
-    };
-
-    const handleBulkDelete = async () => {
-        if (selectedMessages.length === 0) return;
-        try {
-            await Promise.all(
-                selectedMessages.map((id) => API.delete(`/messages/${id}`))
-            );
-            setMessages((prev) =>
-                prev.map((m) =>
-                    selectedMessages.includes(m._id)
-                        ? { ...m, deleted: true, content: "This message was deleted" }
-                        : m
-                )
-            );
-            fetchChats();
-        } catch (error) {
-            console.error("Bulk delete failed", error);
-            toast.error("Could not delete the selected messages.", {
-                title: "Bulk Delete Failed",
-            });
-        } finally {
-            setSelectedMessages([]);
-        }
-    };
-
-    const handleCopySelected = async () => {
-        const text = selectedMessages
-            .map((id) => messages.find((m) => m._id === id)?.content)
-            .filter(Boolean)
-            .join("\n");
-
-        try {
-            await navigator.clipboard.writeText(text);
-            setSelectedMessages([]);
-            toast.success("Selected messages copied to clipboard.", {
-                title: "Copied",
-                duration: 3000,
-            });
-        } catch (error) {
-            console.error("Failed to copy selected messages", error);
-            toast.error("Could not copy the selected messages.", {
-                title: "Copy Failed",
-            });
-        }
-    };
-
-    // ─── Forward Message handler ───
-    const handleForwardMessage = async (targetChatId) => {
-        if (!forwardMessageId || !targetChatId) return;
-        try {
-            await API.post("/messages/forward", {
-                messageId: forwardMessageId,
-                targetChatId
-            });
-            setForwardMessageId(null);
-            toast.success("Message forwarded successfully.", {
-                title: "Forwarded",
-            });
-        } catch (error) {
-            console.error("Failed to forward message", error);
-            toast.error("Could not forward the message.", {
-                title: "Forward Failed",
-            });
-        }
-    };
-
-    // ─── Search handlers ───
-    const handleSearch = (query) => {
-        setSearchQuery(query);
-        if (!query.trim()) {
-            setSearchResults([]);
-            setCurrentResultIndex(0);
-            return;
-        }
-        const results = messages
-            .map((msg, idx) => ({ msgId: msg._id, idx }))
-            .filter(({ idx }) =>
-                messages[idx].content?.toLowerCase().includes(query.toLowerCase()) &&
-                !messages[idx].deleted
-            );
-        setSearchResults(results);
-        setCurrentResultIndex(0);
-        if (results.length > 0) {
-            scrollToMessage(results[0].msgId);
-        }
-    };
-
-    const scrollToMessage = (msgId) => {
-        const el = messageRefs.current[msgId];
-        if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-    };
-
-    const goToNextResult = () => {
-        if (searchResults.length === 0) return;
-        const next = (currentResultIndex + 1) % searchResults.length;
-        setCurrentResultIndex(next);
-        scrollToMessage(searchResults[next].msgId);
-    };
-
-    const goToPrevResult = () => {
-        if (searchResults.length === 0) return;
-        const prev = (currentResultIndex - 1 + searchResults.length) % searchResults.length;
-        setCurrentResultIndex(prev);
-        scrollToMessage(searchResults[prev].msgId);
-    };
-
-    const closeSearch = () => {
-        setShowSearch(false);
-        setSearchQuery("");
-        setSearchResults([]);
-        setCurrentResultIndex(0);
-    };
-
-    // ─── Pin handlers ───
-    const handlePinMessage = async (msgId) => {
-        try {
-            const { data } = await API.post(`/chats/${selectedChatId}/pin`, { messageId: msgId });
-            if (data.success) setPinnedMessages(data.data);
-        } catch (error) {
-            console.error("Failed to pin", error);
-            toast.error("Could not pin this message.", {
-                title: "Pin Failed",
-            });
-        }
-    };
-
-    const handleUnpinMessage = async (msgId) => {
-        try {
-            const { data } = await API.delete(`/chats/${selectedChatId}/pin/${msgId}`);
-            if (data.success) setPinnedMessages(data.data);
-        } catch (error) {
-            console.error("Failed to unpin", error);
-            toast.error("Could not unpin this message.", {
-                title: "Unpin Failed",
-            });
-        }
-    };
-
-    // ─── File upload handler ───
-    const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file || !selectedChatId) return;
-
-        const selectedChat = chats.find((c) => c._id === selectedChatId);
-        const otherUser = selectedChat?.participants?.find(
-            (p) => p._id !== user._id
-        );
-        if (!otherUser && !selectedChat?.isGroupChat) return;
+    const handleUploadFile = async (file) => {
+        if (!selectedChatId) return;
+        const currentChat = chats.find(c => c._id === selectedChatId);
+        const recipient = currentChat?.participants?.find(p => p._id !== user._id);
 
         const formData = new FormData();
         formData.append("file", file);
         formData.append("chatId", selectedChatId);
-        formData.append("receiverId", otherUser?._id || "");
+        formData.append("receiverId", recipient?._id || currentChat._id);
 
         try {
-            await API.post("/messages/upload", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
+            const res = await API.post("/messages/upload", formData, {
+                headers: { "Content-Type": "multipart/form-data" }
             });
-            fetchChats();
-            toast.success("File uploaded successfully.", {
-                title: "Upload Complete",
-                duration: 3000,
-            });
-        } catch (error) {
-            console.error("File upload failed", error);
-            toast.error("Could not upload the selected file.", {
-                title: "Upload Failed",
-            });
+            const decrypted = decryptMessageObj(res.data.data);
+            setMessages(prev => [...prev, decrypted]);
+        } catch (err) {
+            toast?.error?.(err.response?.data?.message || "File upload failed");
         }
-
-        // Reset file input
-        if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
-    // ─── Voice Recording Handlers ───
-
-
-    const startRecording = async () => {
-        if (!selectedChatId) return;
+    const handleReactToMessage = async (messageId, emoji) => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaStreamRef.current = stream;
-            const mediaRecorder = new MediaRecorder(stream);
-            recorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
-
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-
-                // Upload the audio file similar to image/file handles
-                const selectedChat = chats.find((c) => c._id === selectedChatId);
-                const otherUser = selectedChat?.participants?.find((p) => p._id !== user._id);
-                if (!otherUser && !selectedChat?.isGroupChat) return;
-
-                const formData = new FormData();
-                // Send default name because Blob doesn't have an originalname property
-                formData.append("file", audioBlob, `VoiceMessage_${Date.now()}.webm`);
-                formData.append("chatId", selectedChatId);
-                formData.append("receiverId", otherUser?._id || "");
-
-                try {
-                    await API.post("/messages/upload", formData, {
-                        headers: { "Content-Type": "multipart/form-data" },
-                    });
-                    fetchChats();
-                    toast.success("Voice message sent successfully.", {
-                        title: "Voice Message Sent",
-                        duration: 3000,
-                    });
-                } catch (error) {
-                    console.error("Audio upload failed", error);
-                    toast.error("Could not send the voice message.", {
-                        title: "Voice Upload Failed",
-                    });
-                }
-
-                // Cleanup stream post-upload
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
-            setIsRecording(true);
-            setRecordingDuration(0);
-
-            recordingIntervalRef.current = setInterval(() => {
-                setRecordingDuration((prev) => prev + 1);
-            }, 1000);
-
-        } catch (error) {
-            console.error("Microphone access denied or error:", error);
-            toast.error("Could not access your microphone.", {
-                title: "Microphone Unavailable",
-            });
+            const res = await API.post(`/messages/${messageId}/react`, { emoji });
+            setMessages(prev => prev.map(m => m._id === messageId ? decryptMessageObj(res.data.data) : m));
+        } catch (err) {
+            console.error("Reaction failed:", err);
         }
     };
 
-    const stopRecording = () => {
-        if (recorderRef.current && isRecording) {
-            recorderRef.current.stop();
-            setIsRecording(false);
-            clearInterval(recordingIntervalRef.current);
+    const handleDeleteMessage = async (messageId) => {
+        try {
+            await API.delete(`/messages/${messageId}`);
+            setMessages(prev => prev.filter(m => m._id !== messageId));
+        } catch (err) {
+            console.error("Delete message failed:", err);
         }
     };
 
-    // ─── Helpers ───
-    const getOtherUserPresence = (chat) => {
-        if (!chat || chat.isGroupChat) return null;
-        const other = chat.participants?.find((p) => p._id !== user._id);
-        if (!other) return null;
-
-        const presence = onlineStatuses[other._id] || {
-            status: other.status,
-            lastSeen: other.lastSeen,
-        };
-
-        if (presence.status === "online") {
-            return (
-                <span style={{ color: "#4ade80", fontSize: "12px", display: "block", marginTop: "2px" }}>
-                    Online
-                </span>
-            );
-        } else if (presence.lastSeen) {
-            return (
-                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "12px", display: "block", marginTop: "2px" }}>
-                    Last seen: {formatLastSeen(presence.lastSeen)}
-                </span>
-            );
+    const handleLogout = async () => {
+        try {
+            await API.post("/auth/logout");
+        } catch (err) {
+            console.warn("Logout request failed:", err);
         }
-        return (
-            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "12px", display: "block", marginTop: "2px" }}>
-                Offline
-            </span>
-        );
-    };
-
-    // ─── Status ticks ───
-    const getStatusTicks = (status) => {
-        switch (status) {
-            case "read":
-                return (
-                    <span style={styles.tickRead} title="Read">
-                        <CheckCheck size={14} />
-                    </span>
-                );
-            case "delivered":
-                return (
-                    <span style={styles.tickDelivered} title="Delivered">
-                        <CheckCheck size={14} />
-                    </span>
-                );
-            default:
-                return (
-                    <span style={styles.tickSent} title="Sent">
-                        <Check size={14} />
-                    </span>
-                );
-        }
-    };
-
-    const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         navigate("/");
     };
 
-    const handleChatCreated = (chat) => {
-        setShowUserList(false);
-        setSelectedChatId(chat._id);
-        fetchChats();
+    // WebRTC Calls
+    const startCall = (type) => {
+        const currentChat = chats.find(c => c._id === selectedChatId);
+        const other = currentChat?.participants?.find(p => p._id !== user._id);
+        if (!other) return;
+
+        setCallPeer({ id: other._id, name: other.name });
+        setCallType(type);
+        setCallState("calling");
+
+        socket.emit("call_user", {
+            receiverId: other._id,
+            callerName: user.name,
+            chatId: selectedChatId,
+            callType: type
+        });
     };
 
-    // ─── Group Management Handlers ───
-    const handleLeaveGroup = async () => {
-        if (!window.confirm("Are you sure you want to leave this group?")) return;
-        try {
-            await API.put(`/chats/${selectedChatId}/leave`);
-            setShowGroupInfo(false);
-            setSelectedChatId(null);
-            fetchChats();
-            toast.success("You left the group successfully.", {
-                title: "Group Left",
-            });
-        } catch (error) {
-            console.error("Failed to leave group:", error);
-            toast.error("Could not leave the group.", {
-                title: "Leave Failed",
-            });
-        }
+    const acceptCall = () => {
+        if (!incomingCallData) return;
+        socket.emit("call_accepted", { callerId: incomingCallData.callerId });
+        setCallState("connected");
     };
 
-    const handleRemoveParticipant = async (participantId) => {
-        if (!window.confirm("Remove this user from the group?")) return;
-        try {
-            await API.put(`/chats/${selectedChatId}/remove`, { userId: participantId });
-            // The socket 'user_left_group' will trigger the state refresh naturally
-            toast.success("Participant removed successfully.", {
-                title: "Participant Removed",
-            });
-        } catch (error) {
-            console.error("Failed to remove participant:", error);
-            toast.error("Could not remove the participant.", {
-                title: "Removal Failed",
-            });
-        }
+    const rejectCall = () => {
+        if (!incomingCallData) return;
+        socket.emit("call_rejected", { callerId: incomingCallData.callerId });
+        cleanupCall();
     };
 
-    const handleUserAddedToGroup = async (userId) => {
-        try {
-            await API.put(`/chats/${groupToAddUsers}/add`, { userId });
-            setGroupToAddUsers(null);
-            toast.success("User added to the group successfully.", {
-                title: "User Added",
-            });
-        } catch (error) {
-            console.error("Failed to add user to group:", error);
-            toast.error("Could not add the user to the group.", {
-                title: "Add User Failed",
-            });
+    const endCall = () => {
+        if (callPeer) {
+            socket.emit("end_call", { targetId: callPeer.id });
         }
+        cleanupCall();
     };
 
-    const selectedChat = chats.find((c) => c._id === selectedChatId);
-
-    // Load pinned messages when chat changes
-    useEffect(() => {
-        if (selectedChat?.pinnedMessages) {
-            setPinnedMessages(selectedChat.pinnedMessages);
-        } else {
-            setPinnedMessages([]);
+    const cleanupCall = () => {
+        setCallState(null);
+        setCallPeer(null);
+        setIncomingCallData(null);
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            setLocalStream(null);
         }
-    }, [selectedChat?.pinnedMessages]);
-
-    // Emoji-to-label map for accessible reaction buttons
-    const emojiLabels = { "👍": "thumbs up", "❤️": "heart", "😂": "laugh", "😮": "surprised", "😢": "sad" };
-
-    // Keyboard handler for chat list arrow navigation
-    const handleChatListKeyDown = (e, chatId, index) => {
-        const items = e.currentTarget.parentElement?.querySelectorAll('[role="option"]');
-        if (!items) return;
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            const next = items[index + 1];
-            if (next) next.focus();
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            const prev = items[index - 1];
-            if (prev) prev.focus();
-        } else if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setSelectedChatId(chatId);
-        }
+        setRemoteStream(null);
     };
+
+    const selectedChat = chats.find(c => c._id === selectedChatId);
 
     return (
-        <>
-            <style>{`
-                @keyframes blink {
-                    0% { opacity: 0.3; transform: scale(0.8); }
-                    50% { opacity: 1; transform: scale(1.1); }
-                    100% { opacity: 0.3; transform: scale(0.8); }
-                }
-                @keyframes messageAppear {
-                    from { opacity: 0; transform: translateY(6px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes popIn {
-                    0% { opacity: 0; transform: scale(0.8); }
-                    100% { opacity: 1; transform: scale(1); }
-                }
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-                @keyframes slideUp {
-                    from { opacity: 0; transform: translateY(8px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
-            <a href="#chat-input" className="skip-link">Skip to message input</a>
-            <div className="chat-container" style={styles.container}>
-                {/* ─── Sidebar ─── */}
-                {isMobileDrawerOpen && <div className="sidebar-backdrop" onClick={() => setIsMobileDrawerOpen(false)} aria-hidden="true" />}
-                <aside className={`chat-sidebar ${isMobileDrawerOpen ? 'drawer-open' : 'drawer-closed'}`} style={styles.sidebar} aria-label="Conversations">
-                    <header style={styles.sidebarHeader}>
-                        <h2 style={styles.sidebarTitle}><MessageCircle size={20} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: "6px" }} />Chats</h2>
-                        <div style={{ display: "flex", gap: "8px" }}>
-                            <button
-                                onClick={() => navigate("/status")}
-                                style={{ ...styles.newChatBtn, background: "var(--accent-success-bg)", color: "var(--accent-success)", borderColor: "var(--accent-success-border)" }}
-                                aria-label="Go to Status"
-                            >
-                                <CircleDot size={18} aria-hidden="true" />
-                            </button>
-                            <button
-                                onClick={() => setShowUserList(true)}
-                                style={styles.newChatBtn}
-                                aria-label="Start new chat"
-                            >
-                                <Plus size={18} aria-hidden="true" />
-                            </button>
-                            <button onClick={handleLogout} style={styles.logoutBtn} aria-label="Log out">
-                                <LogOut size={16} aria-hidden="true" />
-                            </button>
-                        </div>
-                    </header>
+        <div style={{
+            display: "flex",
+            width: "100vw",
+            height: "100vh",
+            backgroundColor: "var(--bg-space, #0b0813)",
+            overflow: "hidden"
+        }}>
+            {/* Sidebar Component */}
+            <ChatSidebar
+                user={user}
+                chats={chats}
+                selectedChatId={selectedChatId}
+                onSelectChat={(id) => setSelectedChatId(id)}
+                searchQuery={searchQuery}
+                onSearchChange={(q) => setSearchQuery(q)}
+                onlineStatuses={onlineStatuses}
+                onOpenCreateGroup={() => setShowUserListModal(true)}
+                onLogout={handleLogout}
+                unreadFilter={unreadFilter}
+                setUnreadFilter={setUnreadFilter}
+            />
 
-                    <ul className="chat-list-scrollable" role="listbox" aria-label="Chat list">
-                        {loading ? (
-                            <ChatListSkeleton />
-                        ) : error ? (
-                            <p role="alert" style={styles.errorText}>{error}</p>
-                        ) : chats.length === 0 ? (
-                            <p style={styles.placeholder}>No chats yet</p>
-                        ) : (
-                            chats.map((chat, index) => {
-                                const isSelected = chat._id === selectedChatId;
-                                const unread = chat.unreadCounts?.[user._id] || 0;
+            {/* Main Chat Area Component */}
+            <ChatArea
+                selectedChat={selectedChat}
+                currentUser={user}
+                messages={messages}
+                loadingMessages={loadingMessages}
+                loadingOlderMessages={loadingOlderMessages}
+                hasMoreMessages={hasMoreMessages}
+                onLoadOlderMessages={() => fetchMessages(selectedChatId, nextCursor)}
+                isTyping={isTyping}
+                onlineStatuses={onlineStatuses}
+                onSendMessage={handleSendMessage}
+                onUploadFile={handleUploadFile}
+                replyingTo={replyingTo}
+                onCancelReply={() => setReplyingTo(null)}
+                onReactToMessage={handleReactToMessage}
+                onReplyToMessage={(msg) => setReplyingTo(msg)}
+                onDeleteMessage={handleDeleteMessage}
+                onToggleGroupInfo={() => setShowGroupInfoModal(true)}
+                onStartCall={startCall}
+                onStartTyping={() => socket.emit("typing", { chatId: selectedChatId })}
+                onStopTyping={() => socket.emit("stop_typing", { chatId: selectedChatId })}
+            />
 
-                                return (
-                                    <li
-                                        key={chat._id}
-                                        role="option"
-                                        tabIndex={0}
-                                        aria-selected={isSelected}
-                                        aria-label={`${getChatName(chat, user)}${unread > 0 ? `, ${unread} unread messages` : ''}`}
-                                        onClick={() => { setSelectedChatId(chat._id); setIsMobileDrawerOpen(false); }}
-                                        onKeyDown={(e) => handleChatListKeyDown(e, chat._id, index)}
-                                        style={{
-                                            ...styles.chatItem,
-                                            ...(isSelected ? styles.chatItemActive : {}),
-                                        }}
-                                    >
-                                        <div style={styles.avatar} aria-hidden="true">{getInitial(chat, user)}</div>
-                                        <div style={styles.chatInfo}>
-                                            <div style={styles.chatTopRow}>
-                                                <span style={styles.chatName}>{getChatName(chat, user)}</span>
-                                                <span style={styles.chatTime}>
-                                                    {formatTime(chat.updatedAt)}
-                                                </span>
-                                            </div>
-                                            <div style={styles.chatBottomRow}>
-                                                <span style={styles.lastMessage}>
-                                                    {chat.lastMessage?.content || "No messages yet"}
-                                                </span>
-                                                {unread > 0 && (
-                                                    <span style={styles.badge} aria-label={`${unread} unread`}>{unread}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </li>
-                                );
-                            })
-                        )}
-                    </ul>
-                </aside>
-
-                {/* ─── Main Area ─── */}
-                <main className="chat-main" style={styles.main} aria-label="Chat window">
-                    {selectedChat ? (
-                        <>
-                            {/* Chat Header */}
-                            <header className="chat-header" style={styles.chatHeader}>
-                                <button className="mobile-menu-btn touch-target" onClick={() => setIsMobileDrawerOpen(true)} aria-label="Open menu"><Menu size={24} aria-hidden="true" /></button>
-                                <div style={styles.avatar} aria-hidden="true">{getInitial(selectedChat, user)}</div>
-                                <div style={{ flex: 1 }}>
-                                    <h3 style={styles.chatHeaderName}>
-                                        {getChatName(selectedChat, user)}
-                                    </h3>
-                                    {!isTyping && getOtherUserPresence(selectedChat)}
-                                    {isTyping && (
-                                        <span style={styles.typingIndicator} aria-live="polite" aria-label="User is typing">
-                                            typing
-                                            <span style={styles.typingDots} aria-hidden="true">
-                                                <span style={{ ...styles.dot, animationDelay: "0s" }}>.</span>
-                                                <span style={{ ...styles.dot, animationDelay: "0.2s" }}>.</span>
-                                                <span style={{ ...styles.dot, animationDelay: "0.4s" }}>.</span>
-                                            </span>
-                                        </span>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={() => showSearch ? closeSearch() : setShowSearch(true)}
-                                    style={styles.searchToggleBtn}
-                                    aria-label="Search messages"
-                                >
-                                    <Search size={18} aria-hidden="true" />
-                                </button>
-                                <button
-                                    onClick={() => handleExportChat('txt')}
-                                    className="mobile-hidden-btn"
-                                    style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
-                                    aria-label="Export chat as TXT"
-                                >
-                                    TXT
-                                </button>
-                                <button
-                                    onClick={() => handleExportChat('json')}
-                                    className="mobile-hidden-btn"
-                                    style={{ ...styles.searchToggleBtn, fontSize: '14px', width: 'auto', padding: '0 8px' }}
-                                    aria-label="Export chat as JSON"
-                                >
-                                    JSON
-                                </button>
-
-                                {!selectedChat?.isGroupChat && (
-                                    <>
-                                        <button
-                                            onClick={() => handleCallUser("audio")}
-                                            style={styles.searchToggleBtn}
-                                            aria-label="Start voice call"
-                                        >
-                                            <Phone size={18} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleCallUser("video")}
-                                            style={styles.searchToggleBtn}
-                                            aria-label="Start video call"
-                                        >
-                                            <Video size={18} aria-hidden="true" />
-                                        </button>
-                                    </>
-                                )}
-                                {selectedChat?.isGroupChat && (
-                                    <button
-                                        onClick={() => setShowGroupInfo(true)}
-                                        style={styles.searchToggleBtn}
-                                        aria-label="View group info"
-                                    >
-                                        <Info size={18} aria-hidden="true" />
-                                    </button>
-                                )}
-                            </header>
-
-                            {/* Search Bar */}
-                            {showSearch && (
-                                <div style={styles.searchBar}>
-                                    <input
-                                        type="text"
-                                        placeholder="Search in chat..."
-                                        value={searchQuery}
-                                        onChange={(e) => handleSearch(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Escape") closeSearch();
-                                            if (e.key === "Enter") e.shiftKey ? goToPrevResult() : goToNextResult();
-                                        }}
-                                        style={styles.searchInput}
-                                        autoFocus
-                                    />
-                                    {searchResults.length > 0 && (
-                                        <span style={styles.searchCount}>
-                                            {currentResultIndex + 1}/{searchResults.length}
-                                        </span>
-                                    )}
-                                    {searchQuery && searchResults.length === 0 && (
-                                        <span style={styles.searchCount}>No results</span>
-                                    )}
-                                    <button onClick={goToPrevResult} style={styles.searchNavBtn} title="Previous"><ChevronUp size={14} /></button>
-                                    <button onClick={goToNextResult} style={styles.searchNavBtn} title="Next"><ChevronDown size={14} /></button>
-                                    <button onClick={closeSearch} style={styles.searchNavBtn} title="Close"><X size={14} /></button>
-                                </div>
-                            )}
-
-                            {/* Pinned Messages Bar */}
-                            {pinnedMessages.length > 0 && (
-                                <div style={styles.pinnedBar}>
-                                    {pinnedMessages.map((pin) => (
-                                        <div
-                                            key={pin._id}
-                                            style={styles.pinnedItem}
-                                            onClick={() => scrollToMessage(pin._id)}
-                                        >
-                                            <Pin size={14} style={styles.pinnedIcon} />
-                                            <span style={styles.pinnedText}>
-                                                {pin.content?.length > 40
-                                                    ? pin.content.substring(0, 40) + "..."
-                                                    : pin.content}
-                                            </span>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleUnpinMessage(pin._id); }}
-                                                style={styles.unpinBtn}
-                                                title="Unpin"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Messages Area */}
-                            <ErrorBoundary fallback={<ChatErrorFallback />}>
-                                <ul className="chat-messages-area" role="log" aria-live="polite" aria-label="Messages" style={styles.messagesArea}>
-                                {loadingMessages ? (
-                                    <MessageListSkeleton />
-                                ) : messages.length === 0 ? (
-                                    <li style={styles.emptyMessages}>
-                                        <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "14px" }}>
-                                            No messages yet. Say hello!
-                                        </p>
-                                    </li>
-                                ) : (
-                                    messages.map((msg, index) => {
-                                        const isOwn =
-                                            msg.senderId === user._id ||
-                                            msg.senderId?._id === user._id;
-
-                                        // Grouping logic
-                                        const prevMsg = messages[index - 1];
-                                        const nextMsg = messages[index + 1];
-                                        const getSenderId = (m) => m?.senderId?._id || m?.senderId;
-                                        const isSameSenderAsPrev = prevMsg && getSenderId(prevMsg) === getSenderId(msg);
-                                        const isSameSenderAsNext = nextMsg && getSenderId(nextMsg) === getSenderId(msg);
-
-                                        // Determine bubble position in group
-                                        const isFirst = !isSameSenderAsPrev && isSameSenderAsNext;
-                                        const isMiddle = isSameSenderAsPrev && isSameSenderAsNext;
-                                        const isLast = isSameSenderAsPrev && !isSameSenderAsNext;
-                                        const isGrouped = isSameSenderAsPrev;
-
-                                        // Grouped border-radius
-                                        let groupedRadius = {};
-                                        if (isOwn) {
-                                            if (isFirst) groupedRadius = { borderBottomRightRadius: "4px" };
-                                            else if (isMiddle) groupedRadius = { borderTopRightRadius: "4px", borderBottomRightRadius: "4px" };
-                                            else if (isLast) groupedRadius = { borderTopRightRadius: "4px" };
-                                        } else {
-                                            if (isFirst) groupedRadius = { borderBottomLeftRadius: "4px" };
-                                            else if (isMiddle) groupedRadius = { borderTopLeftRadius: "4px", borderBottomLeftRadius: "4px" };
-                                            else if (isLast) groupedRadius = { borderTopLeftRadius: "4px" };
-                                        }
-
-                                        if (msg.type === "system") {
-                                            return (
-                                                <li key={msg._id} style={{ display: "flex", justifyContent: "center", margin: "12px 0" }} aria-label="System message">
-                                                    <div style={{
-                                                        background: "rgba(255,255,255,0.05)",
-                                                        padding: "6px 16px",
-                                                        borderRadius: "16px",
-                                                        fontSize: "12px",
-                                                        color: "rgba(255,255,255,0.5)",
-                                                        fontStyle: "italic",
-                                                        userSelect: "none"
-                                                    }}>
-                                                        {msg.content}
-                                                    </div>
-                                                </li>
-                                            );
-                                        }
-
-                                        return (
-                                            <li
-                                                key={msg._id}
-                                                ref={(el) => { messageRefs.current[msg._id] = el; }}
-                                                className={`msg-row ${isOwn ? 'msg-own' : 'msg-other'}`}
-                                                onClick={(e) => {
-                                                    if (e.ctrlKey || e.metaKey) {
-                                                        e.preventDefault();
-                                                        toggleMessageSelection(msg._id);
-                                                    }
-                                                }}
-                                                style={{
-                                                    ...styles.messageRow,
-                                                    justifyContent: isOwn ? "flex-end" : "flex-start",
-                                                    marginBottom: isGrouped ? "2px" : "8px",
-                                                    ...(selectedMessages.includes(msg._id) ? styles.selectedRow : {}),
-                                                }}
-                                            >
-                                                {!msg.deleted && (
-                                                    <div className="msg-actions" style={styles.messageActions} role="toolbar" aria-label="Message actions">
-                                                        <button
-                                                            onClick={() => setReplyMessage(msg)}
-                                                            style={styles.actionBtn}
-                                                            aria-label="Reply to message"
-                                                        >
-                                                            <Reply size={14} aria-hidden="true" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg._id ? null : msg._id)}
-                                                            style={styles.actionBtn}
-                                                            aria-label="Add reaction"
-                                                        >
-                                                            <SmilePlus size={14} aria-hidden="true" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setForwardMessageId(msg._id)}
-                                                            style={styles.actionBtn}
-                                                            aria-label="Forward message"
-                                                        >
-                                                            <Forward size={14} aria-hidden="true" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                const isPinned = pinnedMessages.some(p => p._id === msg._id);
-                                                                isPinned ? handleUnpinMessage(msg._id) : handlePinMessage(msg._id);
-                                                            }}
-                                                            style={{
-                                                                ...styles.actionBtn,
-                                                                ...(pinnedMessages.some(p => p._id === msg._id) ? { color: '#facc15' } : {}),
-                                                            }}
-                                                            aria-label={pinnedMessages.some(p => p._id === msg._id) ? "Unpin message" : "Pin message"}
-                                                        >
-                                                            <Pin size={14} aria-hidden="true" />
-                                                        </button>
-                                                        {isOwn && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleEditClick(msg)}
-                                                                    style={styles.actionBtn}
-                                                                    aria-label="Edit message"
-                                                                >
-                                                                    <Pencil size={14} aria-hidden="true" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDeleteClick(msg._id)}
-                                                                    style={styles.actionBtn}
-                                                                    aria-label="Delete message"
-                                                                >
-                                                                    <Trash2 size={14} aria-hidden="true" />
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                {emojiPickerMsgId === msg._id && (
-                                                    <div style={styles.emojiPicker} role="toolbar" aria-label="Emoji reactions" onKeyDown={(e) => { if (e.key === "Escape") setEmojiPickerMsgId(null); }}>
-                                                        {["👍", "❤️", "😂", "😮", "😢"].map((em) => (
-                                                            <button
-                                                                key={em}
-                                                                onClick={() => handleReaction(msg._id, em)}
-                                                                style={styles.emojiBtn}
-                                                                aria-label={`React with ${emojiLabels[em] || em} emoji`}
-                                                            >
-                                                                {em}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <div style={styles.messageContainer}>
-                                                    <div
-                                                        className="msg-bubble"
-                                                        style={{
-                                                            ...styles.messageBubble,
-                                                            ...(isOwn
-                                                                ? styles.ownBubble
-                                                                : styles.otherBubble),
-                                                            ...(msg.deleted ? styles.deletedBubble : {}),
-                                                            ...groupedRadius,
-                                                            ...(searchQuery && !msg.deleted && msg.content?.toLowerCase().includes(searchQuery.toLowerCase())
-                                                                ? (searchResults[currentResultIndex]?.msgId === msg._id
-                                                                    ? styles.searchMatchCurrent
-                                                                    : styles.searchMatch)
-                                                                : {}),
-                                                        }}
-                                                    >
-                                                        {selectedChat?.isGroupChat && !isOwn && isFirst && (
-                                                            <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", marginBottom: "4px", fontWeight: 600 }}>
-                                                                {msg.senderId?.name || "User"}
-                                                            </div>
-                                                        )}
-                                                        {msg.forwarded && (
-                                                            <div style={styles.forwardedLabel}>
-                                                                <span style={{ fontSize: '11px', marginRight: '4px' }}>↪</span> Forwarded
-                                                            </div>
-                                                        )}
-                                                        {msg.replyTo && (
-                                                            <div style={styles.replyPreviewBubble}>
-                                                                <span style={styles.replyPreviewName}>
-                                                                    {msg.replyTo.senderId?.name || msg.replyTo.senderId === user._id ? "You" : "User"}
-                                                                </span>
-                                                                <span style={styles.replyPreviewText}>
-                                                                    {msg.replyTo.content?.length > 60
-                                                                        ? msg.replyTo.content.substring(0, 60) + "..."
-                                                                        : msg.replyTo.content}
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        <div className="msg-content" style={{
-                                                            ...styles.messageContent,
-                                                            ...(msg.deleted ? { fontStyle: "italic", opacity: 0.7 } : {})
-                                                        }}>
-                                                            {msg.deleted ? msg.content
-                                                                : msg.type === "image" ? (
-                                                                    <img
-                                                                        src={`${BACKEND_URL}${msg.content}`}
-                                                                        alt={msg.fileName || "Image"}
-                                                                        style={styles.messageImage}
-                                                                        onClick={() => setPreviewImage(msg.content)}
-                                                                    />
-                                                                ) : msg.type === "file" ? (
-                                                                    <a
-                                                                        href={`${BACKEND_URL}${msg.content}`}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        style={styles.fileLink}
-                                                                        download
-                                                                    >
-                                                                        <span style={styles.fileIcon} aria-hidden="true"><FileText size={16} /></span>
-                                                                        <span style={styles.fileName}>{msg.fileName || "File"}</span>
-                                                                    </a>
-                                                                ) : msg.type === "audio" ? (
-                                                                    <div style={styles.audioContainer}>
-                                                                        <Mic size={16} aria-hidden="true" style={styles.audioIcon} />
-                                                                        <audio controls style={styles.audioPlayer} aria-label="Voice message audio player">
-                                                                            <source src={`${BACKEND_URL}${msg.content}`} />
-                                                                        </audio>
-                                                                    </div>
-                                                                ) : renderContentWithMentions(msg.content)
-                                                            }
-                                                        </div>
-                                                        <div style={styles.messageFooter}>
-                                                            {msg.scheduled && (
-                                                                <div style={{ fontSize: "11px", color: isOwn ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)", marginBottom: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
-                                                                    <Clock size={12} aria-hidden="true" /> Scheduled for {new Date(msg.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                </div>
-                                                            )}
-                                                            <span style={styles.messageTime}>
-                                                                {msg.edited && !msg.deleted && <span style={{ marginRight: '4px' }}>(edited)</span>}
-                                                                {formatMessageTime(msg.createdAt)}
-                                                                {isOwn && getStatusTicks(msg.status)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    {/* Reactions below bubble */}
-                                                    {msg.reactions && msg.reactions.length > 0 && (
-                                                        <div style={{
-                                                            ...styles.reactionsRow,
-                                                            justifyContent: isOwn ? "flex-end" : "flex-start",
-                                                        }}>
-                                                            {Object.entries(
-                                                                msg.reactions.reduce((acc, r) => {
-                                                                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                                                                    return acc;
-                                                                }, {})
-                                                            ).map(([emoji, count]) => (
-                                                                <button
-                                                                    key={emoji}
-                                                                    onClick={() => handleReaction(msg._id, emoji)}
-                                                                    style={{
-                                                                        ...styles.reactionChip,
-                                                                        ...(msg.reactions.some(
-                                                                            (r) => r.emoji === emoji && (r.userId === user._id || r.userId?.toString() === user._id)
-                                                                        ) ? styles.reactionChipActive : {}),
-                                                                    }}
-                                                                    aria-label={`Toggle ${emojiLabels[emoji] || emoji} reaction, ${count} ${count === 1 ? 'reaction' : 'reactions'}`}
-                                                                >
-                                                                    {emoji} {count > 1 ? count : ""}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </li>
-                                        );
-                                    })
-                                )}
-                                <li ref={messagesEndRef} aria-hidden="true" />
-                            </ul>
-                            </ErrorBoundary>
-
-                            {/* Selection Toolbar */}
-                            {selectedMessages.length > 0 && (
-                                <div style={styles.selectionToolbar}>
-                                    <span style={styles.selectionCount}>
-                                        {selectedMessages.length} selected
-                                    </span>
-                                    <div style={{ display: "flex", gap: "8px" }}>
-                                        <button onClick={handleCopySelected} style={styles.selectionBtn}>
-                                            <Clipboard size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Copy
-                                        </button>
-                                        <button onClick={handleBulkDelete} style={styles.selectionBtnDanger}>
-                                            <Trash2 size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Delete
-                                        </button>
-                                        <button onClick={() => setSelectedMessages([])} style={styles.selectionBtnClear}>
-                                            <X size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Message Input */}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                {replyMessage && !editingMessageId && (
-                                    <div style={styles.replyBanner}>
-                                        <div style={{ flex: 1 }}>
-                                            <span style={{ fontSize: '11px', color: '#4ade80', display: 'block' }}>
-                                                Replying to {replyMessage.senderId === user._id || replyMessage.senderId?._id === user._id ? "yourself" : (replyMessage.senderId?.name || "User")}
-                                            </span>
-                                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
-                                                {replyMessage.content?.length > 50 ? replyMessage.content.substring(0, 50) + "..." : replyMessage.content}
-                                            </span>
-                                        </div>
-                                        <button onClick={() => setReplyMessage(null)} style={styles.cancelEditBtn} aria-label="Cancel reply"><X size={14} aria-hidden="true" /></button>
-                                    </div>
-                                )}
-                                {editingMessageId && (
-                                    <div style={styles.editBanner}>
-                                        <span style={{ fontSize: '12px', color: '#667eea' }}>Editing message...</span>
-                                        <button onClick={handleCancelEdit} style={styles.cancelEditBtn} aria-label="Cancel edit"><X size={14} aria-hidden="true" /></button>
-                                    </div>
-                                )}
-                                {/* Mention Autocomplete Dropdown */}
-                                {showMentionDropdown && mentionSuggestions.length > 0 && (
-                                    <div style={{
-                                        background: "rgba(20, 18, 50, 0.98)",
-                                        border: "1px solid rgba(255,255,255,0.1)",
-                                        borderRadius: "12px",
-                                        padding: "6px 0",
-                                        maxHeight: "160px",
-                                        overflowY: "auto",
-                                        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-                                    }}>
-                                        {mentionSuggestions.map(p => (
-                                            <div
-                                                key={p._id}
-                                                onClick={() => selectMention(p)}
-                                                style={{
-                                                    display: "flex", alignItems: "center", gap: "10px",
-                                                    padding: "10px 16px", cursor: "pointer",
-                                                    transition: "background 0.15s",
-                                                }}
-                                                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                                                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                                            >
-                                                <div style={{ width: "30px", height: "30px", borderRadius: "10px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "13px", color: "#fff", flexShrink: 0 }}>
-                                                    {p.name?.charAt(0).toUpperCase() || "?"}
-                                                </div>
-                                                <span style={{ color: "#fff", fontSize: "14px", fontWeight: 500 }}>
-                                                    @{p.name}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                <form className="chat-input-bar" style={styles.inputBar} id="chat-input" onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}>
-                                    {isRecording ? (
-                                        <div style={styles.recordingBanner} aria-live="assertive">
-                                            <div style={styles.recordingIndicator} aria-hidden="true"></div>
-                                            <span style={styles.recordingTimer}>{formatDuration(recordingDuration)}</span>
-                                            <span style={styles.recordingText}>Recording...</span>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <input
-                                                type="file"
-                                                ref={fileInputRef}
-                                                onChange={handleFileUpload}
-                                                style={{ display: 'none' }}
-                                                aria-hidden="true"
-                                                tabIndex={-1}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                style={styles.attachBtn}
-                                                aria-label="Attach file"
-                                            >
-                                                <Paperclip size={18} aria-hidden="true" />
-                                            </button>
-                                            <input
-                                                className="chat-input-field"
-                                                value={messageText}
-                                                onChange={handleInputChange}
-                                                onKeyDown={handleKeyDown}
-                                                placeholder="Type a message..."
-                                                autoFocus={!!editingMessageId}
-                                                aria-label="Message input"
-                                            />
-                                        </>
-                                    )}
-
-                                    {!messageText.trim() && !editingMessageId ? (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowSchedulePicker(!showSchedulePicker)}
-                                                style={{ ...styles.attachBtn, fontSize: '18px', padding: '6px 4px' }}
-                                                aria-label="Schedule message"
-                                            >
-                                                <Clock size={18} aria-hidden="true" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={isRecording ? stopRecording : startRecording}
-                                                style={{
-                                                    ...styles.micBtn,
-                                                    ...(isRecording ? styles.micBtnActive : {})
-                                                }}
-                                                aria-label={isRecording ? "Stop and send recording" : "Record voice message"}
-                                            >
-                                                {isRecording ? <Square size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <button
-                                            type="submit"
-                                            style={styles.sendBtn}
-                                            aria-label={editingMessageId ? "Save edited message" : "Send message"}
-                                        >
-                                            {editingMessageId ? <Check size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
-                                        </button>
-                                    )}
-                                </form>
-                            </div>
-
-                            {/* Schedule Picker Bar */}
-                            {showSchedulePicker && (
-                                <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 16px", background: "rgba(255,255,255,0.02)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                                    <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)" }}>Schedule for:</span>
-                                    <input
-                                        type="datetime-local"
-                                        style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", borderRadius: "6px", padding: "6px 10px", outline: "none", fontSize: "13px", colorScheme: "dark" }}
-                                        value={scheduledTime}
-                                        onChange={(e) => setScheduledTime(e.target.value)}
-                                        min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                                    />
-                                    <button
-                                        onClick={handleScheduleMessage}
-                                        disabled={!scheduledTime || !messageText.trim()}
-                                        style={{ ...styles.sendBtn, padding: "6px 12px", background: "linear-gradient(135deg, #10b981, #059669)", opacity: (!scheduledTime || !messageText.trim()) ? 0.5 : 1, pointerEvents: (!scheduledTime || !messageText.trim()) ? 'none' : 'auto', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
-                                    >
-                                        Schedule
-                                    </button>
-                                    <button onClick={() => { setShowSchedulePicker(false); setScheduledTime(""); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: "13px" }}>Cancel</button>
-                                </div>
-                            )}
-
-                        </>
-                    ) : (
-                        <div style={styles.mainContent}>
-                            <header className="chat-header mobile-only-header" style={{ padding: "12px 16px", display: "none", alignItems: "center", borderBottom: "1px solid var(--border-default)" }}>
-                                <button className="mobile-menu-btn touch-target" onClick={() => setIsMobileDrawerOpen(true)} aria-label="Open menu"><Menu size={24} aria-hidden="true" /></button>
-                                <h3 style={{ margin: "0 0 0 12px", color: "var(--text-primary)", fontSize: "var(--fs-body)" }}>ChatUp</h3>
-                            </header>
-                            <div style={styles.emptyState}>
-                                <MessageCircle size={48} style={{ color: "var(--text-muted)" }} />
-                                <h3 style={{ color: "#fff", margin: "16px 0 8px" }}>
-                                    Select a chat
-                                </h3>
-                                <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "14px" }}>
-                                    Choose a conversation from the sidebar to start messaging
-                                </p>
-                            </div>
-                        </div>
-                    )}
-                </main>
-
-                {/* UserList Modal */}
-                {showUserList && (
-                    <UserList
-                        onClose={() => setShowUserList(false)}
-                        onChatCreated={handleChatCreated}
-                    />
-                )}
-
-                {/* Image Preview Modal */}
-                {previewImage && (
-                    <div
-                        style={styles.imagePreviewOverlay}
-                        onClick={() => setPreviewImage(null)}
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="Image preview"
-                        onKeyDown={(e) => { if (e.key === "Escape") setPreviewImage(null); }}
-                    >
-                        <button
-                            onClick={() => setPreviewImage(null)}
-                            style={styles.imagePreviewClose}
-                            aria-label="Close preview"
-                        >
-                            <X size={18} />
-                        </button>
-                        <img
-                            src={`http://localhost:5000${previewImage}`}
-                            alt="Preview"
-                            style={styles.imagePreviewImg}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <a
-                            href={`http://localhost:5000${previewImage}`}
-                            download
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={styles.imagePreviewDownload}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <Download size={14} style={{ marginRight: "6px", verticalAlign: "middle" }} />Download
-                        </a>
-                    </div>
-                )}
-
-                {/* Forward Message Modal */}
-                {forwardMessageId && (
-                    <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-label="Forward message" onKeyDown={(e) => { if (e.key === "Escape") setForwardMessageId(null); }}>
-                        <div style={styles.modalContent}>
-                            <h3 style={{ margin: "0 0 16px" }}>Forward Message to...</h3>
-                            <div style={styles.forwardChatList}>
-                                {chats.map(chat => (
-                                    <div
-                                        key={chat._id}
-                                        style={styles.forwardChatItem}
-                                        onClick={() => handleForwardMessage(chat._id)}
-                                    >
-                                        <div style={styles.chatAvatar}>
-                                            {chat.isGroupChat ? <Users size={16} /> : <User size={16} />}
-                                        </div>
-                                        <span style={{ color: "#fff", flex: 1 }}>{getChatName(chat, user)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div style={styles.modalActions}>
-                                <button onClick={() => setForwardMessageId(null)} style={styles.modalBtn}>
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Delete Confirmation Modal */}
-                {messageToDelete && (
-                    <div style={styles.modalOverlay} role="alertdialog" aria-modal="true" aria-label="Delete message confirmation" onKeyDown={(e) => { if (e.key === "Escape") cancelDelete(); }}>
-                        <div style={styles.modalContent}>
-                            <h3 style={{ margin: "0 0 16px" }}>Delete Message</h3>
-                            <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
-                                Are you sure you want to delete this message? This action cannot be undone.
-                            </p>
-                            <div style={styles.modalActions}>
-                                <button onClick={cancelDelete} style={styles.modalBtn} aria-label="Cancel delete">
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={confirmDelete}
-                                    style={{ ...styles.modalBtn, ...styles.modalBtnDanger }}
-                                    id="confirm-delete-btn"
-                                    aria-label="Confirm delete"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Group Info Modal */}
-                {showGroupInfo && selectedChat?.isGroupChat && (
-                    <div style={styles.modalOverlay} onClick={() => setShowGroupInfo(false)} role="dialog" aria-modal="true" aria-label="Group info" onKeyDown={(e) => { if (e.key === "Escape") setShowGroupInfo(false); }}>
-                        <div style={{ ...styles.modalContent, maxWidth: "440px", maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                                <h3 style={{ margin: 0, color: "#fff" }}>Group Info</h3>
-                                <button onClick={() => setShowGroupInfo(false)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Close group info"><X size={16} aria-hidden="true" /></button>
-                            </div>
-
-                            {/* Group Name & Avatar */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
-                                <div style={{ width: "60px", height: "60px", borderRadius: "18px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "28px", flexShrink: 0 }}>
-                                    <Users size={28} />
-                                </div>
-                                <div>
-                                    <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "18px" }}>{selectedChat.name}</h4>
-                                    <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "13px" }}>
-                                        {selectedChat.participants?.length || 0} participants
-                                    </span>
-                                </div>
-                            </div>
-
-                            {selectedChat.description && (
-                                <div style={{ padding: "12px 16px", background: "rgba(255,255,255,0.04)", borderRadius: "12px", marginBottom: "16px" }}>
-                                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Description</span>
-                                    <span style={{ fontSize: "14px", color: "rgba(255,255,255,0.8)" }}>{selectedChat.description}</span>
-                                </div>
-                            )}
-
-                            {/* Participants List */}
-                            <div style={{ marginBottom: "16px" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                                    <span style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>MEMBERS</span>
-                                    {(selectedChat.admin?._id === user._id || selectedChat.admin === user._id) && (
-                                        <button
-                                            onClick={() => { setGroupToAddUsers(selectedChatId); setShowGroupInfo(false); }}
-                                            style={{ background: "rgba(102,126,234,0.15)", border: "1px solid rgba(102,126,234,0.3)", color: "#667eea", fontSize: "12px", padding: "6px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}
-                                        >
-                                            + Add Member
-                                        </button>
-                                    )}
-                                </div>
-                                {selectedChat.participants?.map((p) => {
-                                    const isAdmin = (selectedChat.admin?._id || selectedChat.admin) === p._id;
-                                    const isSelf = p._id === user._id;
-                                    const canRemove = (selectedChat.admin?._id === user._id || selectedChat.admin === user._id) && !isSelf;
-                                    return (
-                                        <div key={p._id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", borderRadius: "12px", marginBottom: "2px", background: "rgba(255,255,255,0.03)" }}>
-                                            <div style={{ width: "36px", height: "36px", borderRadius: "12px", background: isAdmin ? "linear-gradient(135deg, #f59e0b, #ef4444)" : "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "14px", color: "#fff", flexShrink: 0 }}>
-                                                {p.name?.charAt(0).toUpperCase() || "?"}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                    <span style={{ fontWeight: 600, fontSize: "14px", color: "#fff" }}>{p.name}{isSelf ? " (You)" : ""}</span>
-                                                    {isAdmin && (
-                                                        <span style={{ fontSize: "10px", background: "rgba(245,158,11,0.2)", color: "#f59e0b", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>Admin</span>
-                                                    )}
-                                                </div>
-                                                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>{p.email}</span>
-                                            </div>
-                                            {canRemove && (
-                                                <button
-                                                    onClick={() => handleRemoveParticipant(p._id)}
-                                                    style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: "11px", padding: "4px 10px", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}
-                                                >
-                                                    Remove
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Leave Group */}
-                            <button
-                                onClick={handleLeaveGroup}
-                                style={{ width: "100%", padding: "14px", borderRadius: "12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontWeight: 600, fontSize: "15px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-                            >
-                                <LogOut size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} />Leave Group
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Add Member to Group Modal */}
-                {groupToAddUsers && (
-                    <div style={styles.modalOverlay} onClick={() => setGroupToAddUsers(null)} role="dialog" aria-modal="true" aria-label="Add member to group" onKeyDown={(e) => { if (e.key === "Escape") setGroupToAddUsers(null); }}>
-                        <div style={{ ...styles.modalContent, maxWidth: "420px", maxHeight: "70vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                                <h3 style={{ margin: 0, color: "#fff" }}>Add Member</h3>
-                                <button onClick={() => setGroupToAddUsers(null)} style={{ background: "var(--bg-input)", border: "none", color: "var(--text-tertiary)", fontSize: "14px", width: "32px", height: "32px", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Close add member"><X size={16} aria-hidden="true" /></button>
-                            </div>
-                            <AddMemberList chatId={groupToAddUsers} existingParticipants={selectedChat?.participants || []} onAdd={handleUserAddedToGroup} />
-                        </div>
-                    </div>
-                )}
-                {/* Incoming Call Modal */}
-                {incomingCall && !isInCall && (
-                    <div style={styles.modalOverlay}>
-                        <div style={{ ...styles.modalContent, textAlign: "center", padding: "30px", maxWidth: "300px" }}>
-                            <div style={{ fontSize: "40px", marginBottom: "16px", animation: "pulse 1.5s infinite" }}>
-                                {incomingCall.callType === "video" ? <Video size={40} /> : <Phone size={40} />}
-                            </div>
-                            <h3 style={{ margin: "0 0 8px", color: "#fff" }}>Incoming {incomingCall.callType === "video" ? "Video" : "Voice"} Call</h3>
-                            <p style={{ margin: "0 0 24px", color: "rgba(255,255,255,0.7)" }}>
-                                {incomingCall.callerName} is calling...
-                            </p>
-                            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-                                <button onClick={rejectCall} style={{ ...styles.modalBtn, ...styles.modalBtnDanger, flex: 1 }}>
-                                    Reject
-                                </button>
-                                <button onClick={acceptCall} style={{ ...styles.modalBtn, background: "#10b981", borderColor: "#059669", color: "#fff", flex: 1 }}>
-                                    Accept
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Active Call Overlay */}
-                {isInCall && (
-                    <div style={{
-                        position: "fixed", top: "20px", right: "20px",
-                        width: currentCallType === "video" ? "320px" : "260px",
-                        background: "rgba(20, 18, 50, 0.95)", border: "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: "16px", padding: "20px", zIndex: 9999,
-                        boxShadow: "0 10px 40px rgba(0,0,0,0.5)", textAlign: "center", backdropFilter: "blur(10px)"
-                    }}>
-                        <div style={{ marginBottom: "16px" }}>
-                            {currentCallType === "video" ? (
-                                <div style={{ position: "relative", width: "100%", height: "200px", borderRadius: "12px", overflow: "hidden", background: "#000", marginBottom: "12px" }}>
-                                    <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                    <video ref={localVideoRef} autoPlay playsInline muted style={{ position: "absolute", bottom: "8px", right: "8px", width: "80px", height: "100px", borderRadius: "8px", objectFit: "cover", border: "2px solid rgba(255,255,255,0.2)", background: "#111", display: isVideoOff ? "none" : "block", transform: "scaleX(-1)" }} />
-                                </div>
-                            ) : (
-                                <div style={{
-                                    width: "60px", height: "60px", borderRadius: "30px",
-                                    background: "linear-gradient(135deg, #4ade80, #3b82f6)",
-                                    margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: "24px", color: "#fff", animation: "pulse 2s infinite"
-                                }}>
-                                    <Phone size={24} />
-                                </div>
-                            )}
-                            <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "16px" }}>
-                                {currentCallType === "video" ? "Video Call" : "Voice Call"}
-                            </h4>
-                            <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>
-                                {peerConnectionRef.current?.connectionState === "connected" ? "Connected" : "Calling..."}
-                            </span>
-                        </div>
-                        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-                            <button onClick={toggleMute} style={{ ...styles.modalBtn, flex: 1, padding: "8px", background: isMuted ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.1)", color: isMuted ? "#ef4444" : "#fff", border: "none" }}>
-                                {isMuted ? "Unmute" : "Mute"}
-                            </button>
-                            {currentCallType === "video" && (
-                                <button onClick={toggleVideo} style={{ ...styles.modalBtn, flex: 1, padding: "8px", background: isVideoOff ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.1)", color: isVideoOff ? "#ef4444" : "#fff", border: "none" }}>
-                                    {isVideoOff ? "Start Video" : "Stop Video"}
-                                </button>
-                            )}
-                        </div>
-                        <button onClick={hangUp} style={{ ...styles.modalBtnDanger, width: "100%", padding: "10px", borderRadius: "10px", cursor: "pointer", fontWeight: 600, border: "none" }}>
-                            End Call
-                        </button>
-                        <audio ref={remoteAudioRef} autoPlay style={{ display: "none" }} />
-                    </div>
-                )}
-
-            </div>
-        </>
-    );
-}
-
-/* ─── Styles ─── */
-const styles = {
-    container: {
-        display: "flex",
-        height: "100dvh",
-        fontFamily: "var(--font-family)",
-        background: "var(--bg-space)",
-        color: "var(--text-primary)",
-    },
-
-    /* Sidebar */
-    sidebar: {
-        width: "var(--sidebar-width)",
-        minWidth: "var(--sidebar-width)",
-        background: "var(--bg-glass)",
-        borderRight: "1px solid var(--border-default)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-    },
-    sidebarHeader: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "var(--space-lg) var(--space-lg)",
-        borderBottom: "1px solid var(--border-default)",
-    },
-    sidebarTitle: {
-        margin: 0,
-        fontSize: "var(--fs-heading)",
-        fontWeight: "var(--fw-bold)",
-    },
-    newChatBtn: {
-        background: "var(--accent-gradient)",
-        border: "none",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-heading)",
-        fontWeight: "var(--fw-bold)",
-        width: "var(--avatar-sm)",
-        height: "var(--avatar-sm)",
-        borderRadius: "var(--radius-lg)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "opacity var(--transition-normal)",
-    },
-    logoutBtn: {
-        background: "var(--bg-input)",
-        border: "none",
-        color: "var(--text-tertiary)",
-        fontSize: "var(--fs-subheading)",
-        width: "var(--avatar-sm)",
-        height: "var(--avatar-sm)",
-        borderRadius: "var(--radius-lg)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-
-    /* Chat list */
-    chatList: {
-        flex: 1,
-        overflowY: "auto",
-        padding: "var(--space-sm)",
-    },
-    chatItem: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-md)",
-        padding: "var(--space-md) var(--space-lg)",
-        borderRadius: "var(--radius-xl)",
-        cursor: "pointer",
-        transition: "background var(--transition-normal)",
-        marginBottom: "2px",
-    },
-    chatItemActive: {
-        background: "var(--bg-surface-active)",
-    },
-    avatar: {
-        width: "var(--avatar-md)",
-        height: "var(--avatar-md)",
-        borderRadius: "var(--radius-xl)",
-        background: "var(--accent-gradient)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: "var(--fw-bold)",
-        fontSize: "var(--fs-body-lg)",
-        flexShrink: 0,
-    },
-    chatInfo: {
-        flex: 1,
-        minWidth: 0,
-    },
-    chatTopRow: {
-        display: "flex",
-        justifyContent: "space-between",
-        marginBottom: "var(--space-xs)",
-    },
-    chatName: {
-        fontWeight: "var(--fw-semibold)",
-        fontSize: "var(--fs-body-sm)",
-        color: "var(--text-primary)",
-    },
-    chatTime: {
-        fontSize: "var(--fs-micro)",
-        color: "var(--text-muted)",
-        flexShrink: 0,
-    },
-    chatBottomRow: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-    },
-    lastMessage: {
-        fontSize: "var(--fs-caption)",
-        color: "var(--text-muted)",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        maxWidth: "200px",
-    },
-    badge: {
-        background: "var(--accent-gradient)",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-micro)",
-        fontWeight: "var(--fw-bold)",
-        borderRadius: "var(--radius-lg)",
-        padding: "2px var(--space-sm)",
-        minWidth: "20px",
-        textAlign: "center",
-        flexShrink: 0,
-    },
-
-    /* Placeholders */
-    placeholder: {
-        color: "var(--text-muted)",
-        textAlign: "center",
-        padding: "var(--space-4xl) var(--space-xl)",
-        fontSize: "var(--fs-body-sm)",
-    },
-    errorText: {
-        color: "var(--accent-danger-light)",
-        textAlign: "center",
-        padding: "var(--space-4xl) var(--space-xl)",
-        fontSize: "var(--fs-body-sm)",
-    },
-
-    /* Main area */
-    main: {
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        background: "linear-gradient(180deg, var(--bg-space), var(--bg-elevated))",
-    },
-    chatHeader: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-md)",
-        padding: "var(--space-md) var(--space-lg)",
-        borderBottom: "1px solid var(--border-default)",
-        background: "var(--bg-glass)",
-        flexShrink: 0,
-    },
-    chatHeaderName: {
-        margin: 0,
-        fontSize: "var(--fs-body-lg)",
-        fontWeight: "var(--fw-semibold)",
-    },
-    typingIndicator: {
-        fontSize: "var(--fs-small)",
-        color: "var(--accent-success-text)",
-        display: "flex",
-        alignItems: "center",
-        gap: "2px",
-        marginTop: "2px",
-    },
-    typingDots: {
-        display: "inline-flex",
-        gap: "1px",
-        marginLeft: "2px",
-    },
-    dot: {
-        display: "inline-block",
-        animation: "blink 1.2s infinite ease-in-out both",
-        fontSize: "var(--fs-subheading)",
-        lineHeight: 1,
-    },
-    mainContent: {
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    mainPlaceholder: {
-        color: "var(--text-muted)",
-        fontSize: "var(--fs-body-sm)",
-        textAlign: "center",
-        padding: "var(--space-4xl)",
-    },
-    emptyState: {
-        textAlign: "center",
-    },
-
-    /* Forward Modal */
-    forwardedLabel: {
-        fontSize: "var(--fs-micro)",
-        color: "var(--text-tertiary)",
-        fontStyle: "italic",
-        display: "flex",
-        alignItems: "center",
-        marginBottom: "var(--space-xs)",
-    },
-    forwardChatList: {
-        maxHeight: "300px",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-xs)",
-        marginBottom: "var(--space-lg)",
-    },
-    forwardChatItem: {
-        display: "flex",
-        alignItems: "center",
-        padding: "var(--space-lg)",
-        borderRadius: "var(--radius-md)",
-        background: "var(--bg-surface-hover)",
-        cursor: "pointer",
-        transition: "background var(--transition-smooth)",
-        gap: "var(--space-md)",
-    },
-
-    /* Messages */
-    messagesArea: {
-        flex: 1,
-        overflowY: "auto",
-        padding: "var(--space-lg) var(--space-lg)",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        scrollBehavior: "smooth",
-    },
-    emptyMessages: {
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    messageRow: {
-        display: "flex",
-        width: "100%",
-        alignItems: "flex-end",
-        position: "relative",
-    },
-    messageContainer: {
-        display: "flex",
-        flexDirection: "column",
-        maxWidth: "65%",
-        minWidth: 0,
-    },
-    messageBubble: {
-        padding: "var(--space-sm) var(--space-md) 6px",
-        borderRadius: "var(--radius-2xl)",
-        position: "relative",
-    },
-    ownBubble: {
-        background: "var(--bg-bubble-own)",
-        color: "#fff",
-        borderBottomRightRadius: "4px",
-        marginRight: "15px",
-    },
-    otherBubble: {
-        background: "var(--bg-bubble-other)",
-        borderBottomLeftRadius: "var(--radius-sm)",
-    },
-    messageContent: {
-        margin: 0,
-        fontSize: "var(--fs-body-sm)",
-        lineHeight: "1.5",
-        overflowWrap: "break-word",
-    },
-    messageTime: {
-        fontSize: "var(--fs-nano)",
-        color: "var(--text-muted)",
-        marginTop: "2px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        gap: "var(--space-xs)",
-        lineHeight: 1,
-        userSelect: "none",
-    },
-    tickSent: {
-        fontSize: "var(--fs-micro)",
-        color: "var(--text-muted)",
-        letterSpacing: "-2px",
-    },
-    tickDelivered: {
-        fontSize: "var(--fs-micro)",
-        color: "var(--text-tertiary)",
-        letterSpacing: "-2px",
-    },
-    tickRead: {
-        fontSize: "var(--fs-micro)",
-        color: "var(--accent-info)",
-        letterSpacing: "-2px",
-    },
-    messageFooter: {
-        display: "flex",
-        justifyContent: "flex-end",
-        alignItems: "center",
-        gap: "var(--space-xs)",
-        marginTop: "2px",
-    },
-    messageActions: {
-        display: "flex",
-        gap: "2px",
-        opacity: 0,
-        transition: "opacity var(--transition-normal)",
-        alignItems: "center",
-        flexShrink: 0,
-    },
-    actionBtn: {
-        background: "rgba(11, 8, 19, 0.9)",
-        border: "1px solid var(--border-medium)",
-        color: "var(--text-secondary)",
-        cursor: "pointer",
-        fontSize: "var(--fs-small)",
-        padding: "var(--space-xs) 6px",
-        borderRadius: "var(--radius-md)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: "bold",
-        backdropFilter: "var(--blur-md)",
-    },
-    deletedBubble: {
-        background: "var(--bg-bubble-deleted)",
-        border: "1px dashed var(--border-default)",
-        boxShadow: "none",
-    },
-
-    /* Reply styles */
-    replyPreviewBubble: {
-        background: "var(--border-subtle)",
-        borderLeft: "2px solid var(--accent-reply)",
-        borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
-        padding: "var(--space-xs) var(--space-sm)",
-        marginBottom: "var(--space-xs)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0px",
-        cursor: "pointer",
-        transition: "background var(--transition-normal)",
-    },
-    replyPreviewName: {
-        fontSize: "var(--fs-micro)",
-        fontWeight: "var(--fw-semibold)",
-        color: "var(--accent-reply)",
-        lineHeight: 1.3,
-    },
-    replyPreviewText: {
-        fontSize: "var(--fs-small)",
-        color: "var(--text-muted)",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        lineHeight: 1.3,
-    },
-    replyBanner: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "var(--space-sm) var(--space-lg)",
-        background: "var(--accent-reply-bg)",
-        borderTop: "1px solid var(--accent-reply-border)",
-        borderLeft: "3px solid var(--accent-reply)",
-        animation: "slideUp var(--transition-normal)",
-    },
-
-    /* Reaction styles */
-    emojiPicker: {
-        display: "flex",
-        gap: "2px",
-        background: "rgba(11, 8, 19, 0.92)",
-        borderRadius: "var(--radius-pill)",
-        padding: "5px var(--space-lg)",
-        alignItems: "center",
-        flexShrink: 0,
-        border: "1px solid var(--border-default)",
-        backdropFilter: "var(--blur-lg)",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-        animation: "fadeIn var(--transition-normal)",
-    },
-    emojiBtn: {
-        background: "transparent",
-        border: "none",
-        fontSize: "var(--fs-heading)",
-        cursor: "pointer",
-        padding: "var(--space-xs) 5px",
-        borderRadius: "var(--radius-md)",
-        transition: "transform var(--transition-fast), background var(--transition-fast)",
-        lineHeight: 1,
-    },
-    reactionsRow: {
-        display: "flex",
-        gap: "var(--space-xs)",
-        marginTop: "-8px",
-        paddingLeft: "var(--space-xs)",
-        paddingRight: "var(--space-xs)",
-        flexWrap: "wrap",
-        position: "relative",
-        zIndex: 2,
-    },
-    reactionChip: {
-        background: "var(--bg-bubble-other)",
-        border: "1px solid var(--border-medium)",
-        borderRadius: "var(--radius-xl)",
-        padding: "2px var(--space-sm)",
-        fontSize: "var(--fs-small)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-xs)",
-        color: "var(--text-tertiary)",
-        transition: "all var(--transition-normal)",
-        lineHeight: 1.4,
-        animation: "popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
-    },
-    reactionChipActive: {
-        background: "var(--accent-info-bg)",
-        borderColor: "var(--accent-info-border)",
-        color: "var(--text-secondary)",
-    },
-
-    editBanner: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "var(--space-sm) var(--space-lg)",
-        background: "var(--accent-edit-bg)",
-        borderTop: "1px solid var(--accent-edit-border)",
-        borderLeft: "3px solid var(--accent-gradient-start)",
-        animation: "slideUp var(--transition-normal)",
-    },
-    cancelEditBtn: {
-        background: "var(--border-subtle)",
-        border: "none",
-        color: "var(--text-tertiary)",
-        cursor: "pointer",
-        padding: "var(--space-xs) var(--space-sm)",
-        borderRadius: "6px",
-        fontSize: "var(--fs-caption)",
-        transition: "background var(--transition-normal)",
-    },
-
-    /* Modals */
-    modalOverlay: {
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "var(--bg-overlay)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        backdropFilter: "var(--blur-sm)",
-        animation: "fadeIn var(--transition-normal)",
-    },
-    modalContent: {
-        backgroundColor: "var(--bg-elevated)",
-        padding: "var(--space-2xl)",
-        borderRadius: "var(--radius-3xl)",
-        width: "90%",
-        maxWidth: "400px",
-        border: "1px solid var(--border-default)",
-        boxShadow: "var(--shadow-lg)",
-        animation: "slideUp var(--transition-smooth)",
-    },
-    modalActions: {
-        display: "flex",
-        justifyContent: "flex-end",
-        gap: "var(--space-md)",
-    },
-    modalBtn: {
-        background: "var(--border-medium)",
-        border: "none",
-        color: "var(--text-primary)",
-        padding: "var(--space-sm) var(--space-lg)",
-        borderRadius: "var(--radius-md)",
-        cursor: "pointer",
-        fontSize: "var(--fs-body-sm)",
-        transition: "background var(--transition-smooth)",
-    },
-    modalBtnDanger: {
-        background: "var(--accent-danger)",
-    },
-
-    /* Input bar */
-    inputBar: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-        padding: "var(--space-md) var(--space-lg)",
-        borderTop: "1px solid var(--border-default)",
-        background: "var(--bg-glass)",
-        flexShrink: 0,
-    },
-    messageInput: {
-        flex: 1,
-        background: "var(--bg-input)",
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-xl)",
-        padding: "14px 18px",
-        fontSize: "var(--fs-body-sm)",
-        color: "var(--text-primary)",
-        outline: "none",
-        transition: "border-color var(--transition-smooth)",
-    },
-    sendBtn: {
-        background: "var(--accent-gradient)",
-        border: "none",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-subheading)",
-        width: "var(--input-height)",
-        height: "var(--input-height)",
-        borderRadius: "var(--radius-xl)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "opacity var(--transition-normal), transform var(--transition-fast)",
-        flexShrink: 0,
-    },
-
-    /* Selection Mode */
-    selectedRow: {
-        background: "var(--bg-surface-active)",
-        borderRadius: "var(--radius-lg)",
-        transition: "background var(--transition-normal)",
-    },
-    selectionToolbar: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "var(--space-sm) var(--space-lg)",
-        background: "var(--accent-selection-bg)",
-        borderTop: "1px solid var(--accent-selection-border)",
-    },
-    selectionCount: {
-        fontSize: "var(--fs-caption)",
-        fontWeight: "var(--fw-semibold)",
-        color: "var(--accent-selection-text)",
-    },
-    selectionBtn: {
-        background: "var(--border-medium)",
-        border: "1px solid var(--border-strong)",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-small)",
-        padding: "6px 14px",
-        borderRadius: "var(--radius-md)",
-        cursor: "pointer",
-        transition: "background var(--transition-normal)",
-    },
-    selectionBtnDanger: {
-        background: "var(--accent-danger-bg)",
-        border: "1px solid var(--accent-danger-border)",
-        color: "var(--accent-danger-light)",
-        fontSize: "var(--fs-small)",
-        padding: "6px 14px",
-        borderRadius: "var(--radius-md)",
-        cursor: "pointer",
-        transition: "background var(--transition-normal)",
-    },
-    selectionBtnClear: {
-        background: "transparent",
-        border: "none",
-        color: "var(--text-tertiary)",
-        fontSize: "var(--fs-body-lg)",
-        cursor: "pointer",
-        padding: "var(--space-xs) var(--space-sm)",
-    },
-
-    /* Search */
-    searchToggleBtn: {
-        background: "transparent",
-        border: "none",
-        fontSize: "var(--fs-subheading)",
-        cursor: "pointer",
-        padding: "6px",
-        borderRadius: "var(--radius-md)",
-        flexShrink: 0,
-    },
-    searchBar: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-        padding: "var(--space-sm) var(--space-lg)",
-        background: "rgba(255,255,255,0.04)",
-        borderBottom: "1px solid var(--border-default)",
-    },
-    searchInput: {
-        flex: 1,
-        background: "var(--bg-input)",
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-md)",
-        padding: "var(--space-sm) 14px",
-        fontSize: "var(--fs-caption)",
-        color: "var(--text-primary)",
-        outline: "none",
-    },
-    searchCount: {
-        fontSize: "var(--fs-small)",
-        color: "var(--text-tertiary)",
-        whiteSpace: "nowrap",
-        flexShrink: 0,
-    },
-    searchNavBtn: {
-        background: "var(--bg-input)",
-        border: "1px solid var(--border-medium)",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-small)",
-        cursor: "pointer",
-        padding: "6px var(--space-sm)",
-        borderRadius: "6px",
-        flexShrink: 0,
-    },
-    searchMatch: {
-        outline: "2px solid var(--accent-search-highlight)",
-        outlineOffset: "-2px",
-    },
-    searchMatchCurrent: {
-        outline: "2px solid var(--accent-search-current)",
-        outlineOffset: "-2px",
-        boxShadow: "0 0 12px var(--accent-search-glow)",
-    },
-
-    /* Pinned Messages */
-    pinnedBar: {
-        borderBottom: "1px solid var(--border-default)",
-        background: "var(--accent-pinned-bg)",
-        maxHeight: "120px",
-        overflowY: "auto",
-    },
-    pinnedItem: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-        padding: "var(--space-sm) var(--space-lg)",
-        cursor: "pointer",
-        transition: "background var(--transition-normal)",
-    },
-    pinnedIcon: {
-        fontSize: "var(--fs-body-sm)",
-        flexShrink: 0,
-    },
-    pinnedText: {
-        flex: 1,
-        fontSize: "var(--fs-caption)",
-        color: "var(--text-secondary)",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-    },
-    unpinBtn: {
-        background: "transparent",
-        border: "none",
-        color: "var(--text-muted)",
-        fontSize: "var(--fs-small)",
-        cursor: "pointer",
-        padding: "2px 6px",
-        borderRadius: "var(--radius-sm)",
-        flexShrink: 0,
-    },
-
-    /* File / Image Messages */
-    messageImage: {
-        maxWidth: "100%",
-        maxHeight: "280px",
-        borderRadius: "var(--radius-md)",
-        cursor: "pointer",
-        objectFit: "cover",
-        display: "block",
-    },
-    fileLink: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-        color: "var(--accent-link)",
-        textDecoration: "none",
-        padding: "var(--space-sm) var(--space-md)",
-        background: "var(--border-subtle)",
-        borderRadius: "var(--radius-md)",
-        border: "1px solid var(--border-medium)",
-        transition: "background var(--transition-normal)",
-    },
-    fileIcon: {
-        fontSize: "22px",
-        flexShrink: 0,
-    },
-    fileName: {
-        fontSize: "var(--fs-caption)",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        maxWidth: "200px",
-    },
-    attachBtn: {
-        background: "transparent",
-        border: "none",
-        fontSize: "var(--fs-heading)",
-        cursor: "pointer",
-        padding: "6px",
-        flexShrink: 0,
-        borderRadius: "var(--radius-md)",
-    },
-
-    /* Audio Messages & Recording */
-    audioContainer: {
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-lg)",
-        background: "var(--border-subtle)",
-        padding: "var(--space-sm) var(--space-md)",
-        borderRadius: "var(--radius-pill)",
-        border: "1px solid var(--border-default)",
-    },
-    audioIcon: {
-        fontSize: "var(--fs-heading)",
-    },
-    audioPlayer: {
-        outline: "none",
-        width: "240px",
-        maxWidth: "100%",
-        height: "44px",
-    },
-    micBtn: {
-        background: "transparent",
-        border: "none",
-        fontSize: "var(--fs-heading)",
-        cursor: "pointer",
-        padding: "var(--space-sm)",
-        flexShrink: 0,
-        borderRadius: "var(--radius-full)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "all var(--transition-smooth)",
-        color: "var(--text-primary)",
-    },
-    micBtnActive: {
-        background: "var(--accent-danger-bg)",
-        color: "var(--accent-danger)",
-        animation: "pulse 1.5s infinite",
-    },
-    recordingBanner: {
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-md)",
-        padding: "0 var(--space-lg)",
-        background: "linear-gradient(90deg, var(--accent-danger-bg) 0%, rgba(0,0,0,0) 100%)",
-        height: "100%",
-        borderRadius: "var(--radius-pill)",
-    },
-    recordingIndicator: {
-        width: "var(--space-md)",
-        height: "var(--space-md)",
-        background: "var(--accent-danger)",
-        borderRadius: "var(--radius-full)",
-        animation: "blink 1s infinite",
-        boxShadow: "0 0 8px var(--accent-danger)",
-    },
-    recordingTimer: {
-        fontSize: "var(--fs-body)",
-        fontFamily: "var(--font-mono)",
-        color: "#f87171",
-        fontWeight: "bold",
-        width: "var(--space-5xl)",
-    },
-    recordingText: {
-        color: "var(--text-tertiary)",
-        fontSize: "var(--fs-body-sm)",
-        fontStyle: "italic",
-    },
-
-    /* Image Preview Modal */
-    imagePreviewOverlay: {
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        background: "rgba(0, 0, 0, 0.85)",
-        backdropFilter: "var(--blur-md)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 9999,
-        gap: "var(--space-lg)",
-        animation: "fadeIn var(--transition-smooth)",
-    },
-    imagePreviewImg: {
-        maxWidth: "90%",
-        maxHeight: "80vh",
-        borderRadius: "var(--radius-xl)",
-        objectFit: "contain",
-        boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
-    },
-    imagePreviewClose: {
-        position: "absolute",
-        top: "var(--space-xl)",
-        right: "var(--space-2xl)",
-        background: "var(--border-medium)",
-        border: "1px solid var(--text-disabled)",
-        color: "var(--text-primary)",
-        fontSize: "var(--fs-heading)",
-        width: "var(--space-4xl)",
-        height: "var(--space-4xl)",
-        borderRadius: "var(--radius-full)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "background var(--transition-normal)",
-    },
-    imagePreviewDownload: {
-        color: "var(--text-secondary)",
-        textDecoration: "none",
-        fontSize: "var(--fs-caption)",
-        padding: "var(--space-sm) var(--space-lg)",
-        borderRadius: "var(--radius-md)",
-        background: "var(--bg-input)",
-        border: "1px solid var(--border-strong)",
-        transition: "background var(--transition-normal)",
-    },
-};
-
-// ─── Inline Add Member Component ───
-function AddMemberList({ existingParticipants, onAdd }) {
-    const [users, setUsers] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [adding, setAdding] = useState(null);
-
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const res = await API.get("/users");
-                const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-                const existingIds = existingParticipants.map(p => p._id || p);
-                const filtered = (res.data.data || []).filter(
-                    u => u._id !== currentUser._id && !existingIds.includes(u._id)
-                );
-                setUsers(filtered);
-            } catch {
-                setUsers([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchUsers();
-    }, [existingParticipants]);
-
-    const handleClick = async (userId) => {
-        setAdding(userId);
-        await onAdd(userId);
-        setUsers(prev => prev.filter(u => u._id !== userId));
-        setAdding(null);
-    };
-
-    if (loading) return <p style={{ color: "rgba(255,255,255,0.3)", textAlign: "center", padding: "30px" }}>Loading users...</p>;
-    if (users.length === 0) return <p style={{ color: "rgba(255,255,255,0.3)", textAlign: "center", padding: "30px" }}>No users available to add</p>;
-
-    return (
-        <div style={{ flex: 1, overflowY: "auto" }}>
-            {users.map(u => (
-                <div
-                    key={u._id}
-                    onClick={() => !adding && handleClick(u._id)}
-                    style={{
-                        display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px",
-                        borderRadius: "12px", cursor: adding ? "not-allowed" : "pointer",
-                        opacity: adding === u._id ? 0.5 : 1,
-                        marginBottom: "2px", transition: "background 0.15s",
+            {/* Group Info Drawer Modal */}
+            {showGroupInfoModal && (
+                <GroupInfoModal
+                    groupChat={selectedChat}
+                    currentUser={user}
+                    onClose={() => setShowGroupInfoModal(false)}
+                    onAddUser={() => {
+                        setShowGroupInfoModal(false);
+                        setShowUserListModal(true);
                     }}
-                >
-                    <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "15px", color: "#fff", flexShrink: 0 }}>
-                        {u.name?.charAt(0).toUpperCase() || "?"}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ fontWeight: 600, fontSize: "14px", color: "#fff", display: "block" }}>{u.name}</span>
-                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>{u.email}</span>
-                    </div>
-                    <span style={{ fontSize: "18px", color: "#667eea" }}>+</span>
-                </div>
-            ))}
+                    onRemoveUser={async (userId) => {
+                        try {
+                            await API.put(`/chats/${selectedChatId}/remove`, { userId });
+                            fetchChats();
+                        } catch (err) {
+                            toast?.error?.("Failed to remove user");
+                        }
+                    }}
+                    onLeaveGroup={async () => {
+                        try {
+                            await API.put(`/chats/${selectedChatId}/leave`);
+                            setSelectedChatId(null);
+                            setShowGroupInfoModal(false);
+                            fetchChats();
+                        } catch (err) {
+                            toast?.error?.("Failed to leave group");
+                        }
+                    }}
+                />
+            )}
+
+            {/* Create Group / Select User Modal */}
+            {showUserListModal && (
+                <UserList
+                    onClose={() => setShowUserListModal(false)}
+                    onChatCreated={(newChat) => {
+                        setShowUserListModal(false);
+                        fetchChats();
+                        setSelectedChatId(newChat._id);
+                    }}
+                />
+            )}
+
+            {/* WebRTC Call Modal Overlay */}
+            <CallModal
+                callState={callState}
+                callType={callType}
+                peerName={callPeer?.name}
+                localStream={localStream}
+                remoteStream={remoteStream}
+                onAcceptCall={acceptCall}
+                onRejectCall={rejectCall}
+                onEndCall={endCall}
+            />
         </div>
     );
 }
