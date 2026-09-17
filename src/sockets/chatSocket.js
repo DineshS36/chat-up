@@ -64,11 +64,11 @@ const chatSocket = async (io) => {
         const authenticatedUserId = socket.user.userId;
         console.log(`Socket connected: ${socket.id} (user: ${authenticatedUserId})`);
 
-        // ─── join ────────────────────────────────────────────────
-        // Client sends: socket.emit('join', userId)
+        // ─── join / setup ─────────────────────────────────────────
+        // Client sends: socket.emit('join', userId) or socket.emit('setup', userId)
         // FIX #1: Ignore client-sent userId; use authenticated identity
         // FIX #2: Store multiple socket IDs per user for multi-device support
-        socket.on('join', async (_clientUserId) => {
+        const handleJoin = async (_clientUserId) => {
             const userId = authenticatedUserId; // enforce server-side identity
 
             await presence.addSocket(userId, socket.id);
@@ -83,7 +83,10 @@ const chatSocket = async (io) => {
             } catch (err) {
                 console.error('Error updating user online status:', err.message);
             }
-        });
+        };
+
+        socket.on('join', handleJoin);
+        socket.on('setup', handleJoin);
 
         // ─── heartbeat ────────────────────────────────────────────
         // Client sends: socket.emit('heartbeat', userId)

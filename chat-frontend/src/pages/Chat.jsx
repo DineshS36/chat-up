@@ -67,9 +67,15 @@ function Chat() {
 
         fetchChats();
 
-        // Connect Socket.IO
-        socket.connect();
-        socket.emit("setup", user._id);
+        // Connect Socket.IO with the latest token
+        const token = localStorage.getItem("token");
+        if (token) {
+            socket.auth = { token };
+            if (!socket.connected) {
+                socket.connect();
+            }
+            socket.emit("join", user._id);
+        }
 
         return () => {
             socket.disconnect();
@@ -280,6 +286,7 @@ function Chat() {
         } catch (err) {
             console.warn("Logout request failed:", err);
         }
+        socket.disconnect();
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         navigate("/");

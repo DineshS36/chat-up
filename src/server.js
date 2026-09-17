@@ -23,7 +23,16 @@ const allowedOrigins = [
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const normalizedOrigin = origin.replace(/\/+$/, '');
+      const isAllowed = allowedOrigins.some(o => o.replace(/\/+$/, '') === normalizedOrigin);
+      if (isAllowed) {
+        return callback(null, true);
+      }
+      console.warn(`[Socket CORS] Blocked connection from origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'), false);
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   }
