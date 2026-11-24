@@ -3,12 +3,15 @@ import { io } from "socket.io-client";
 // Read from Vite environment variable with a localhost fallback for local development
 const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// Send JWT token for server-side authentication
+// Create Socket.IO instance with autoConnect: false to prevent unauthenticated handshake failures on the login page
 const socket = io(SOCKET_URL, {
-    transports: ["websocket", "polling"],
+    autoConnect: false,
+    transports: ["polling", "websocket"],
     withCredentials: true,
-    auth: {
-        token: localStorage.getItem("token"),
+    auth: (cb) => {
+        cb({
+            token: localStorage.getItem("token") || "",
+        });
     },
 });
 

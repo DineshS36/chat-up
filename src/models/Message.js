@@ -14,7 +14,7 @@ const messageSchema = new mongoose.Schema({
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Receiver is required']
+    default: null  // FIX #4: Optional for group chats (no single receiver)
   },
   content: {
     type: String,
@@ -81,6 +81,12 @@ const messageSchema = new mongoose.Schema({
 
 // Index for efficient paginated message loading
 messageSchema.index({ chatId: 1, createdAt: -1 });
+
+// Index for cursor-based pagination (efficient $lt/$gt on _id within a chat)
+messageSchema.index({ chatId: 1, _id: -1 });
+
+// Index for fast unread message lookups (mark-as-read queries)
+messageSchema.index({ chatId: 1, senderId: 1, status: 1 });
 
 // Text index for full-text search on message content
 messageSchema.index({ content: 'text' });

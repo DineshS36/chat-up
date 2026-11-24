@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
   },
   profilePic: {
     type: String,
-    default: 'https://ui-avatars.com/api/?background=random&name=User'
+    default: ''  // FIX #9: No external dependency; frontend renders initials-based fallback
   },
   status: {
     type: String,
@@ -53,5 +53,8 @@ userSchema.pre('save', async function (next) {
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Fast user lookup by status (presence queries)
+userSchema.index({ status: 1 });
 
 module.exports = mongoose.model('User', userSchema);

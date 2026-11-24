@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const { isTokenBlacklisted } = require('../services/tokenService');
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   try {
     let token;
 
@@ -16,22 +17,20 @@ const auth = (req, res, next) => {
       throw error;
     }
 
-    // Debug logs (remove after fixing)
-    console.log('--- AUTH DEBUG ---');
-    console.log('Token received:', token.substring(0, 20) + '...');
-    console.log('JWT_SECRET loaded:', !!process.env.JWT_SECRET);
-    console.log('JWT_SECRET value:', process.env.JWT_SECRET);
+    // Check if token has been revoked (logout / password change)
+    const blacklisted = await isTokenBlacklisted(token);
+    if (blacklisted) {
+      const error = new Error('Token has been revoked');
+      error.status = 401;
+      throw error;
+    }
 
     try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('Decoded payload:', decoded);
-      console.log('--- END DEBUG ---');
       req.userId = decoded.userId;
       next();
     } catch (err) {
-      console.error('JWT verify error:', err.message);
-      console.log('--- END DEBUG ---');
       const error = new Error('Not authorized, token failed');
       error.status = 401;
       throw error;

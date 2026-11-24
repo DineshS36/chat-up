@@ -2,18 +2,15 @@ const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
 const { createMessage } = require('../services/messageService');
+const presence = require('../services/presenceService');
+const abuseService = require('../services/abuseService');
 
-// In-memory map of userId → { socketId, lastSeen }
-const onlineUsers = new Map();
 const HEARTBEAT_INTERVAL = 30000;  // check every 30s
-const STALE_THRESHOLD   = 60000;  // remove if no heartbeat for 60s
-const MSG_RATE_LIMIT    = 30;     // max messages per window
-const MSG_RATE_WINDOW   = 60000;  // 1 minute window
-
-// Per-user message rate tracking: userId → { count, lastReset }
-const messageRateMap = new Map();
 
 const chatSocket = async (io) => {
+    // Initialize presence service (connects to Redis)
+    presence.init();
+
     // Reset all users to offline on server start
     try {
         await User.updateMany({}, { status: 'offline' });
@@ -24,25 +21,34 @@ const chatSocket = async (io) => {
 
     // ─── Stale-user cleanup interval ──────────────────────────
     setInterval(async () => {
-        const now = Date.now();
-        for (const [userId, entry] of onlineUsers.entries()) {
-            if (now - entry.lastSeen > STALE_THRESHOLD) {
-                onlineUsers.delete(userId);
-                console.log(`[Cleanup] Stale user removed: ${userId}`);
-                try {
-                    await User.findByIdAndUpdate(userId, {
-                        status: 'offline',
-                        lastSeen: new Date(),
-                    });
-                    io.emit('user_status_update', {
-                        userId,
-                        status: 'offline',
-                        lastSeen: new Date(),
-                    });
-                } catch (err) {
-                    console.error('[Cleanup] Error updating stale user:', err.message);
+        try {
+            const staleEntries = await presence.getStaleEntries();
+
+            // Get unique userIds from stale entries
+            const staleUserIds = [...new Set(staleEntries.map(e => e.userId))];
+
+            for (const userId of staleUserIds) {
+                // Only mark offline if user has no remaining sockets
+                const isStillOnline = await presence.isOnline(userId);
+                if (!isStillOnline) {
+                    console.log(`[Cleanup] Stale user removed: ${userId}`);
+                    try {
+                        await User.findByIdAndUpdate(userId, {
+                            status: 'offline',
+                            lastSeen: new Date(),
+                        });
+                        io.emit('user_status_update', {
+                            userId,
+                            status: 'offline',
+                            lastSeen: new Date(),
+                        });
+                    } catch (err) {
+                        console.error('[Cleanup] Error updating stale user:', err.message);
+                    }
                 }
             }
+        } catch (err) {
+            console.error('[Cleanup] Error during stale cleanup:', err.message);
         }
     }, HEARTBEAT_INTERVAL);
 
@@ -53,15 +59,22 @@ const chatSocket = async (io) => {
             socket.disconnect(true);
             return;
         }
-        console.log(`Socket connected: ${socket.id} (user: ${socket.user.userId})`);
 
-        // ─── join ────────────────────────────────────────────────
-        // Client sends: socket.emit('join', userId)
-        // Stores the userId ↔ socketId mapping
-        socket.on('join', async (userId) => {
-            onlineUsers.set(userId, { socketId: socket.id, lastSeen: Date.now() });
-            console.log(`User joined: ${userId} → ${socket.id}`);
-            console.log(`Online users: ${onlineUsers.size}`);
+        // FIX #1: Use the authenticated userId from the JWT token — never trust the client payload
+        const authenticatedUserId = socket.user.userId;
+        console.log(`Socket connected: ${socket.id} (user: ${authenticatedUserId})`);
+
+        // ─── join / setup ─────────────────────────────────────────
+        // Client sends: socket.emit('join', userId) or socket.emit('setup', userId)
+        // FIX #1: Ignore client-sent userId; use authenticated identity
+        // FIX #2: Store multiple socket IDs per user for multi-device support
+        const handleJoin = async (_clientUserId) => {
+            const userId = authenticatedUserId; // enforce server-side identity
+
+            await presence.addSocket(userId, socket.id);
+
+            const socketIds = await presence.getSocketIds(userId);
+            console.log(`User joined: ${userId} → ${socket.id} (${socketIds.length} active socket(s))`);
 
             // Update status in DB and broadcast
             try {
@@ -70,16 +83,16 @@ const chatSocket = async (io) => {
             } catch (err) {
                 console.error('Error updating user online status:', err.message);
             }
-        });
+        };
+
+        socket.on('join', handleJoin);
+        socket.on('setup', handleJoin);
 
         // ─── heartbeat ────────────────────────────────────────────
         // Client sends: socket.emit('heartbeat', userId)
-        // Refreshes the lastSeen timestamp to prevent stale cleanup
-        socket.on('heartbeat', (userId) => {
-            const entry = onlineUsers.get(userId);
-            if (entry && entry.socketId === socket.id) {
-                entry.lastSeen = Date.now();
-            }
+        // FIX #1: Ignore client-sent userId; use authenticated identity
+        socket.on('heartbeat', (_clientUserId) => {
+            presence.updateHeartbeat(authenticatedUserId, socket.id);
         });
 
         // ─── join_chat ───────────────────────────────────────────
@@ -91,41 +104,39 @@ const chatSocket = async (io) => {
         });
 
         // ─── send_message ────────────────────────────────────────
-        // Client sends: socket.emit('send_message', { chatId, senderId, receiverId, content })
-        // 1. Persists the message in MongoDB (with chatId)
-        // 2. Updates the Chat's lastMessage
-        // 3. Emits 'receive_message' to the receiver if online
+        // Client sends: socket.emit('send_message', { chatId, receiverId, content, replyTo })
+        // FIX #1: senderId is enforced from socket.user.userId
         socket.on('send_message', async (data) => {
             try {
-                const { chatId, senderId, receiverId, content, replyTo } = data;
+                const { chatId, receiverId, content, replyTo } = data;
+                const senderId = authenticatedUserId; // FIX #1: enforce identity
 
-                // ─── Socket rate limit check ───
-                if (senderId) {
-                    const now = Date.now();
-                    const rate = messageRateMap.get(senderId) || { count: 0, lastReset: now };
+                // ─── Abuse suspension check ───
+                const { suspended, remainingSeconds } = await abuseService.isSuspended(senderId);
+                if (suspended) {
+                    socket.emit('account_suspended', {
+                        message: 'Your account is temporarily suspended due to abuse.',
+                        remainingSeconds,
+                    });
+                    return;
+                }
 
-                    // Reset window if expired
-                    if (now - rate.lastReset > MSG_RATE_WINDOW) {
-                        rate.count = 0;
-                        rate.lastReset = now;
-                    }
-
-                    rate.count++;
-                    messageRateMap.set(senderId, rate);
-
-                    if (rate.count > MSG_RATE_LIMIT) {
-                        console.warn(`[RateLimit] User ${senderId} exceeded ${MSG_RATE_LIMIT} msgs/min`);
-                        socket.emit('rate_limited', {
-                            message: 'You are sending messages too fast. Please slow down.',
-                        });
-                        return;
-                    }
+                // ─── Rate limit check (Redis-backed) ───
+                const withinLimit = await presence.checkRate(senderId);
+                if (!withinLimit) {
+                    console.warn(`[RateLimit] User ${senderId} exceeded ${presence.MSG_RATE_LIMIT} msgs/min`);
+                    socket.emit('rate_limited', {
+                        message: 'You are sending messages too fast. Please slow down.',
+                    });
+                    // Record violation for escalating suspension
+                    await abuseService.recordRateLimitViolation(senderId);
+                    return;
                 }
 
                 // Validate required fields
-                if (!chatId || !senderId || !receiverId || !content) {
+                if (!chatId || !receiverId || !content) {
                     socket.emit('error', {
-                        message: 'chatId, senderId, receiverId, and content are required',
+                        message: 'chatId, receiverId, and content are required',
                     });
                     return;
                 }
@@ -156,18 +167,15 @@ const chatSocket = async (io) => {
                 // Emit mention notifications
                 if (mentionIds.length > 0) {
                     const sender = await User.findById(senderId).select('name');
-                    mentionIds.forEach(mentionedUserId => {
-                        const mentionedSocketId = onlineUsers.get(mentionedUserId.toString())?.socketId;
-                        if (mentionedSocketId) {
-                            io.to(mentionedSocketId).emit('mention_notification', {
-                                chatId,
-                                chatName: chat.name,
-                                messageId: message._id,
-                                senderName: sender?.name || 'Someone',
-                                content: content.substring(0, 100)
-                            });
-                        }
-                    });
+                    for (const mentionedUserId of mentionIds) {
+                        await presence.emitToUser(io, mentionedUserId.toString(), 'mention_notification', {
+                            chatId,
+                            chatName: chat.name,
+                            messageId: message._id,
+                            senderName: sender?.name || 'Someone',
+                            content: content.substring(0, 100)
+                        });
+                    }
                 }
 
                 // 1. Confirm to sender — so they can replace their optimistic temp message
@@ -177,8 +185,8 @@ const chatSocket = async (io) => {
                 socket.to(chatId).emit('receive_message', messagePayload);
 
                 // 3. If receiver is online, mark as delivered and notify sender
-                const receiverSocketId = onlineUsers.get(receiverId)?.socketId;
-                if (receiverSocketId) {
+                const receiverSockets = await presence.getSocketIds(receiverId);
+                if (receiverSockets.length > 0) {
                     await Message.findByIdAndUpdate(message._id, { status: 'delivered' });
 
                     // Notify sender that message was delivered (tick update)
@@ -188,6 +196,11 @@ const chatSocket = async (io) => {
                 } else {
                     console.log(`[Socket] User ${receiverId} is offline. Message stored for later.`);
                 }
+
+                // ─── Track message hash for duplicate flooding detection ───
+                if (content) {
+                    await abuseService.trackMessageHash(senderId, content);
+                }
             } catch (error) {
                 console.error('[Socket] Error sending message:', error.message);
                 socket.emit('error', { message: error.message });
@@ -195,15 +208,15 @@ const chatSocket = async (io) => {
         });
 
         // ─── messages_read ────────────────────────────────────────
-        // Client sends: socket.emit('messages_read', { chatId, userId })
-        // Marks all messages in the chat as read (except user's own)
-        // Notifies original senders
+        // Client sends: socket.emit('messages_read', { chatId })
+        // FIX #1: userId is enforced from socket.user.userId
         socket.on('messages_read', async (data) => {
             try {
-                const { chatId, userId } = data;
+                const { chatId } = data;
+                const userId = authenticatedUserId; // FIX #1: enforce identity
 
-                if (!chatId || !userId) {
-                    socket.emit('error', { message: 'chatId and userId are required' });
+                if (!chatId) {
+                    socket.emit('error', { message: 'chatId is required' });
                     return;
                 }
 
@@ -222,12 +235,9 @@ const chatSocket = async (io) => {
 
                 // Collect unique senders and notify them
                 const senderIds = [...new Set(unreadMessages.map(m => m.senderId.toString()))];
-                senderIds.forEach((senderId) => {
-                    const senderSocketId = onlineUsers.get(senderId)?.socketId;
-                    if (senderSocketId) {
-                        io.to(senderSocketId).emit('messages_read', { chatId });
-                    }
-                });
+                for (const senderId of senderIds) {
+                    await presence.emitToUser(io, senderId, 'messages_read', { chatId });
+                }
 
                 console.log(`Messages in chat ${chatId} marked as read by ${userId}`);
             } catch (error) {
@@ -237,28 +247,33 @@ const chatSocket = async (io) => {
         });
 
         // ─── typing ──────────────────────────────────────────────
-        // Client sends: socket.emit('typing', { chatId, senderId })
-        // Broadcasts to all other users in the chat room
-        socket.on('typing', ({ chatId, senderId }) => {
-            socket.to(chatId).emit('user_typing', { chatId, senderId });
+        // Client sends: socket.emit('typing', { chatId })
+        // FIX #1: senderId is enforced from socket.user.userId
+        socket.on('typing', ({ chatId }) => {
+            socket.to(chatId).emit('user_typing', { chatId, senderId: authenticatedUserId });
         });
 
         // ─── stop_typing ─────────────────────────────────────────
-        // Client sends: socket.emit('stop_typing', { chatId, senderId })
-        // Broadcasts to all other users in the chat room
-        socket.on('stop_typing', ({ chatId, senderId }) => {
-            socket.to(chatId).emit('user_stop_typing', { chatId, senderId });
+        // Client sends: socket.emit('stop_typing', { chatId })
+        // FIX #1: senderId is enforced from socket.user.userId
+        socket.on('stop_typing', ({ chatId }) => {
+            socket.to(chatId).emit('user_stop_typing', { chatId, senderId: authenticatedUserId });
         });
 
         // ─── WebRTC Signaling for Audio/Video Calls ───────────────────
-        socket.on('call_user', async ({ callerId, receiverId, callerName, chatId, callType }) => {
-            const receiverSocketId = onlineUsers.get(receiverId)?.socketId;
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('incoming_call', {
-                    callerId,
-                    callerName,
-                    chatId,
-                    callType
+        // FIX #1: callerId is enforced from socket.user.userId
+        socket.on('call_user', async ({ receiverId, callerName, chatId, callType }) => {
+            const callerId = authenticatedUserId;
+            const receiverSockets = await presence.getSocketIds(receiverId);
+            if (receiverSockets.length > 0) {
+                // Emit to all receiver sockets
+                receiverSockets.forEach(sid => {
+                    io.to(sid).emit('incoming_call', {
+                        callerId,
+                        callerName,
+                        chatId,
+                        callType
+                    });
                 });
             } else {
                 // If receiver is offline, instantly reject
@@ -266,32 +281,20 @@ const chatSocket = async (io) => {
             }
         });
 
-        socket.on('call_accepted', ({ callerId, receiverId }) => {
-            const callerSocketId = onlineUsers.get(callerId)?.socketId;
-            if (callerSocketId) {
-                io.to(callerSocketId).emit('call_accepted', { receiverId });
-            }
+        socket.on('call_accepted', ({ callerId }) => {
+            presence.emitToUser(io, callerId, 'call_accepted', { receiverId: authenticatedUserId });
         });
 
         socket.on('call_rejected', ({ callerId }) => {
-            const callerSocketId = onlineUsers.get(callerId)?.socketId;
-            if (callerSocketId) {
-                io.to(callerSocketId).emit('call_rejected', { reason: 'Call declined' });
-            }
+            presence.emitToUser(io, callerId, 'call_rejected', { reason: 'Call declined' });
         });
 
         socket.on('webrtc_signal', ({ targetId, signal }) => {
-            const targetSocketId = onlineUsers.get(targetId)?.socketId;
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('webrtc_signal', { signal, from: Array.from(onlineUsers.entries()).find(([k, v]) => v.socketId === socket.id)?.[0] });
-            }
+            presence.emitToUser(io, targetId, 'webrtc_signal', { signal, from: authenticatedUserId });
         });
 
         socket.on('end_call', ({ targetId }) => {
-            const targetSocketId = onlineUsers.get(targetId)?.socketId;
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('end_call');
-            }
+            presence.emitToUser(io, targetId, 'end_call', {});
         });
 
         // ─── COMMUNITY & CHANNEL SOCKET DOMAINS ──────────────────
@@ -327,10 +330,12 @@ const chatSocket = async (io) => {
         });
 
         // ─── send_channel_message
+        // FIX #1: senderId is enforced from socket.user.userId
         socket.on('send_channel_message', async (data) => {
             try {
-                const { channelId, senderId, content } = data;
-                if (!channelId || !senderId || !content) return;
+                const { channelId, content } = data;
+                const senderId = authenticatedUserId;
+                if (!channelId || !content) return;
 
                 // Fire event strictly to channel participants
                 io.to(`channel_${channelId}`).emit('channel_message', {
@@ -351,30 +356,29 @@ const chatSocket = async (io) => {
 
         // ─── disconnect ──────────────────────────────────────────
         // Automatically fired when a client disconnects
-        // Removes the userId from the online map
         socket.on('disconnect', async () => {
-            // Find and remove the user by their socketId
-            for (const [userId, entry] of onlineUsers.entries()) {
-                if (entry.socketId === socket.id) {
-                    onlineUsers.delete(userId);
-                    console.log(`User disconnected: ${userId} (${socket.id})`);
+            const userId = authenticatedUserId;
 
-                    // Update status in DB and broadcast
-                    try {
-                        const lastSeen = new Date();
-                        await User.findByIdAndUpdate(userId, {
-                            status: 'offline',
-                            lastSeen,
-                        });
-                        io.emit('user_status_update', {
-                            userId,
-                            status: 'offline',
-                            lastSeen,
-                        });
-                    } catch (err) {
-                        console.error('Error updating user offline status:', err.message);
-                    }
-                    break;
+            const remainingSockets = await presence.removeSocket(userId, socket.id);
+            console.log(`Socket disconnected: ${userId} (${socket.id}), ${remainingSockets} remaining`);
+
+            // Only mark offline if no more active sockets
+            if (remainingSockets === 0) {
+                console.log(`User fully disconnected: ${userId}`);
+
+                try {
+                    const lastSeen = new Date();
+                    await User.findByIdAndUpdate(userId, {
+                        status: 'offline',
+                        lastSeen,
+                    });
+                    io.emit('user_status_update', {
+                        userId,
+                        status: 'offline',
+                        lastSeen,
+                    });
+                } catch (err) {
+                    console.error('Error updating user offline status:', err.message);
                 }
             }
         });

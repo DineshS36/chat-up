@@ -3,10 +3,13 @@ const router = express.Router();
 const Story = require("../models/Story");
 const protect = require("../middleware/auth");
 const upload = require("../middleware/upload");
+const fileValidator = require("../middleware/fileValidator");
+const validate = require("../middleware/handleValidationErrors");
+const v = require("../middleware/validators");
 
 // POST /api/stories
 // Create a new story
-router.post("/", protect, upload.single("media"), async (req, res) => {
+router.post("/", protect, upload.single("media"), fileValidator, v.createStory, validate, async (req, res) => {
     try {
         const { caption, type } = req.body;
 
@@ -70,7 +73,7 @@ router.get("/", protect, async (req, res) => {
 
 // PUT /api/stories/:id/view
 // Mark story as viewed
-router.put("/:id/view", protect, async (req, res) => {
+router.put("/:id/view", protect, v.viewStory, validate, async (req, res) => {
     try {
         const story = await Story.findById(req.params.id);
 

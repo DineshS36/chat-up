@@ -33,7 +33,8 @@ const errorHandler = (err, req, res, next) => {
 
   res.status(statusCode).json({
     success: false,
-    error: message,
+    message: message,  // Frontend reads this key (err.response?.data?.message)
+    error: message,    // Keep for backward compatibility
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 };

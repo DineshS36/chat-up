@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const { blacklistToken } = require('../services/tokenService');
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -19,6 +20,13 @@ const registerUser = async (req, res, next) => {
     // Validate required fields
     if (!name || !email || !password) {
       const error = new Error('Please provide name, email, and password');
+      error.status = 400;
+      throw error;
+    }
+
+    // FIX #3: Guard against NoSQL injection — ensure inputs are plain strings
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      const error = new Error('Invalid input types');
       error.status = 400;
       throw error;
     }
@@ -65,14 +73,15 @@ const loginUser = async (req, res, next) => {
       throw error;
     }
 
-    // Debug log: incoming request body
-    console.log("Login body:", req.body);
+    // FIX #3: Guard against NoSQL injection — ensure inputs are plain strings
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      const error = new Error('Invalid input types');
+      error.status = 400;
+      throw error;
+    }
 
     // Check if user exists and get password
-    const user = await User.findOne({ email }).select('+password');
-
-    // Debug log: user lookup result
-    console.log("User found:", user ? { _id: user._id, email: user.email } : null);
+    const user = await User.findOne({ email: String(email) }).select('+password');
 
     if (!user) {
       const error = new Error('Invalid credentials');
@@ -82,7 +91,6 @@ const loginUser = async (req, res, next) => {
 
     // Verify password
     const isMatch = await user.comparePassword(password);
-    console.log("Password match:", isMatch);
 
     if (!isMatch) {
       const error = new Error('Invalid credentials');
@@ -111,4 +119,39 @@ const loginUser = async (req, res, next) => {
   }
 };
 
-module.exports = { registerUser, loginUser };
+// @desc    Logout user (revoke token server-side)
+// @route   POST /api/auth/logout
+// @access  Private
+const logoutUser = async (req, res, next) => {
+  try {
+    // Extract the token from the Authorization header
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (token) {
+      // Decode to get expiration time
+      const decoded = jwt.decode(token);
+      if (decoded && decoded.exp) {
+        // Calculate remaining TTL in seconds
+        const remainingTTL = decoded.exp - Math.floor(Date.now() / 1000);
+        if (remainingTTL > 0) {
+          await blacklistToken(token, remainingTTL);
+        }
+      }
+    }
+
+    // Update user status to offline
+    await User.updateOne({ _id: req.userId }, {
+      status: 'offline',
+      lastSeen: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { registerUser, loginUser, logoutUser };
