@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Users, Check } from "lucide-react";
 import API from "../services/api";
-import { UserListSkeleton } from "./LoadingSkeletons";
+import { UserListSkeleton } from "./Skeleton";
 import { useToast } from "../context/toast";
 
 function UserList({ onClose, onChatCreated }) {

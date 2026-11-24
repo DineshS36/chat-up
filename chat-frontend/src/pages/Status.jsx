@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import API from "../services/api";
 import { useToast } from "../context/toast";
-import { StatusListSkeleton } from "../components/LoadingSkeletons";
+import { StatusListSkeleton } from "../components/Skeleton";
 
 function Status() {
     const [stories, setStories] = useState([]);
